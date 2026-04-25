@@ -1,0 +1,96 @@
+[
+  {
+    "week": "WW16",
+    "ao_qty": 8190,
+    "defect_total": 10,
+    "defects": [
+      {
+        "name": "Chip Crack",
+        "count": 3
+      },
+      {
+        "name": "PKG Broken",
+        "count": 1
+      },
+      {
+        "name": "die shift",
+        "count": 1
+      },
+      {
+        "name": "pcb dent",
+        "count": 1
+      },
+      {
+        "name": "pcb scratch",
+        "count": 3
+      },
+      {
+        "name": "원자재 불량",
+        "count": 1
+      },
+      {
+        "name": "lead open",
+        "count": 0
+      },
+      {
+        "name": "pkg 낙석",
+        "count": 0
+      },
+      {
+        "name": "단자 Scratch",
+        "count": 0
+      },
+      {
+        "name": "부풀음",
+        "count": 0
+      }
+    ]
+  },
+  {
+    "week": "WW17",
+    "ao_qty": 12796,
+    "defect_total": 24,
+    "defects": [
+      {
+        "name": "Chip Crack",
+        "count": 9
+      },
+      {
+        "name": "PKG Broken",
+        "count": 6
+      },
+      {
+        "name": "die shift",
+        "count": 2
+      },
+      {
+        "name": "pcb dent",
+        "count": 2
+      },
+      {
+        "name": "pcb scratch",
+        "count": 0
+      },
+      {
+        "name": "원자재 불량",
+        "count": 0
+      },
+      {
+        "name": "lead open",
+        "count": 1
+      },
+      {
+        "name": "pkg 낙석",
+        "count": 1
+      },
+      {
+        "name": "단자 Scratch",
+        "count": 1
+      },
+      {
+        "name": "부풀음",
+        "count": 2
+      }
+    ]
+  }
+]

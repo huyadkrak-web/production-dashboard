@@ -1,0 +1,44 @@
+[
+  {
+    "month": "2026-03",
+    "product": "UDP",
+    "process_code": "FCD01",
+    "month_plan": 48000,
+    "prev_day_plan": 4800
+  },
+  {
+    "month": "2026-03",
+    "product": "UDP",
+    "process_code": "FDA01",
+    "month_plan": 48000,
+    "prev_day_plan": 4800
+  },
+  {
+    "month": "2026-03",
+    "product": "UDP",
+    "process_code": "FWB01",
+    "month_plan": 48000,
+    "prev_day_plan": 4800
+  },
+  {
+    "month": "2026-03",
+    "product": "UDP",
+    "process_code": "BMD01",
+    "month_plan": 48000,
+    "prev_day_plan": 4800
+  },
+  {
+    "month": "2026-03",
+    "product": "UDP",
+    "process_code": "BLM01",
+    "month_plan": 48000,
+    "prev_day_plan": 4800
+  },
+  {
+    "month": "2026-03",
+    "product": "UDP",
+    "process_code": "BPS01",
+    "month_plan": 48000,
+    "prev_day_plan": 4800
+  }
+]

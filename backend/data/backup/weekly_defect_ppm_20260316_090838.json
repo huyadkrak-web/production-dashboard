@@ -1,0 +1,19 @@
+[
+  {
+    "week": "",
+    "total_ppm": 3388,
+    "chip_crack": 953,
+    "die_shift": 0,
+    "pad_open": 318,
+    "lead_open": 424,
+    "pad_contam": 529,
+    "lead_contam": 741,
+    "scratch": 0,
+    "pkg_nakseok": 212,
+    "sawing_miss": 212,
+    "mk_defect": 0,
+    "pkg_broken": 0,
+    "etc": 0,
+    "etc_name": ""
+  }
+]

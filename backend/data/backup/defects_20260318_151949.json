@@ -1,0 +1,14 @@
+[
+  {
+    "date": "2026-03-13",
+    "product": "UDP2.0",
+    "process_group": "Front",
+    "defect_summary": "Chip crack : 5\nLead 오염 : 1\nLead open : 1\nPad open : 1"
+  },
+  {
+    "date": "2026-03-18",
+    "product": "",
+    "process_group": "Front",
+    "defect_summary": ""
+  }
+]

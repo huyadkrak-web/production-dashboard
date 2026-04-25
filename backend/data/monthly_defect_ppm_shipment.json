@@ -1,0 +1,40 @@
+[
+  {
+    "label": "26.4",
+    "total_ppm": 1110.1622544833476,
+    "defects": [
+      {
+        "name": "Chip Crack",
+        "value": 256.19128949615714
+      },
+      {
+        "name": "Die Shift",
+        "value": 85.39709649871905
+      },
+      {
+        "name": "Scratch",
+        "value": 256.19128949615714
+      },
+      {
+        "name": "PKG Broken",
+        "value": 170.7941929974381
+      },
+      {
+        "name": "PCB Dent",
+        "value": 85.39709649871905
+      },
+      {
+        "name": "기타",
+        "value": 85.39709649871905
+      },
+      {
+        "name": "Lead Open",
+        "value": 85.39709649871905
+      },
+      {
+        "name": "PKG 낙석",
+        "value": 85.39709649871905
+      }
+    ]
+  }
+]

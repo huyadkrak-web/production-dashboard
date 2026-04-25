@@ -1,0 +1,64 @@
+[
+  {
+    "week": "WW16",
+    "ao_qty": 8180,
+    "defect_total": 10,
+    "defects": [
+      {
+        "name": "Chip Crack",
+        "count": 3
+      },
+      {
+        "name": "PKG Broken",
+        "count": 1
+      },
+      {
+        "name": "die shift",
+        "count": 1
+      },
+      {
+        "name": "pcb dent",
+        "count": 1
+      },
+      {
+        "name": "pcb scratch",
+        "count": 3
+      },
+      {
+        "name": "원자재 불량",
+        "count": 1
+      }
+    ]
+  },
+  {
+    "week": "WW17",
+    "ao_qty": 10471,
+    "defect_total": 16,
+    "defects": [
+      {
+        "name": "Chip Crack",
+        "count": 6
+      },
+      {
+        "name": "PKG Broken",
+        "count": 6
+      },
+      {
+        "name": "die shift",
+        "count": 1
+      },
+      {
+        "name": "pcb dent",
+        "count": 1
+      },
+      {
+        "name": "pcb scratch",
+        "count": 1
+      },
+      {
+        "name": "원자재 불량",
+        "count": 1
+      }
+    ]
+  }
+]

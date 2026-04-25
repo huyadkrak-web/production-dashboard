@@ -1,0 +1,41 @@
+[
+  {
+    "week": "WW16",
+    "ao_qty": 8190,
+    "defect_total": 10,
+    "defects": [
+      { "name": "Chip Crack", "count": 3 },
+      { "name": "Die Shift", "count": 1 },
+      { "name": "Scratch", "count": 3 },
+      { "name": "PKG Broken", "count": 1 },
+      { "name": "PCB Dent", "count": 1 },
+      { "name": "기타", "count": 1 }
+    ]
+  },
+  {
+    "week": "WW17",
+    "ao_qty": 0,
+    "defect_total": 0,
+    "defects": [
+      { "name": "Chip Crack", "count": 0 },
+      { "name": "Die Shift", "count": 0 },
+      { "name": "Scratch", "count": 0 },
+      { "name": "PKG Broken", "count": 0 },
+      { "name": "PCB Dent", "count": 0 },
+      { "name": "기타", "count": 0 }
+    ]
+  },
+  {
+    "week": "WW18",
+    "ao_qty": 0,
+    "defect_total": 0,
+    "defects": [
+      { "name": "Chip Crack", "count": 0 },
+      { "name": "Die Shift", "count": 0 },
+      { "name": "Scratch", "count": 0 },
+      { "name": "PKG Broken", "count": 0 },
+      { "name": "PCB Dent", "count": 0 },
+      { "name": "기타", "count": 0 }
+    ]
+  }
+]

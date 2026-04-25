@@ -1,0 +1,65 @@
+[
+  {
+    "product": "DIE",
+    "process_code": "FDA01",
+    "process_name": "D/A",
+    "process_group": "Front",
+    "is_assembly": "Y",
+    "display_order": 1,
+    "is_active": true
+  },
+  {
+    "product": "DIE",
+    "process_code": "FDA02",
+    "process_name": "D/A 2차",
+    "process_group": "Front",
+    "is_assembly": "Y",
+    "display_order": 2,
+    "is_active": true
+  },
+  {
+    "product": "DIE",
+    "process_code": "FWB02",
+    "process_name": "W/B 1 (NAND+NAND)",
+    "process_group": "Front",
+    "is_assembly": "Y",
+    "display_order": 3,
+    "is_active": true
+  },
+  {
+    "product": "DIE",
+    "process_code": "BMD01",
+    "process_name": "Mold",
+    "process_group": "Back End",
+    "is_assembly": "Y",
+    "display_order": 4,
+    "is_active": true
+  },
+  {
+    "product": "DIE",
+    "process_code": "BLM01",
+    "process_name": "Laser Marking",
+    "process_group": "Back End",
+    "is_assembly": "Y",
+    "display_order": 5,
+    "is_active": true
+  },
+  {
+    "product": "DIE",
+    "process_code": "BPS01",
+    "process_name": "PKG Singulation",
+    "process_group": "Back End",
+    "is_assembly": "Y",
+    "display_order": 6,
+    "is_active": true
+  },
+  {
+    "product": "DIE",
+    "process_code": "BBM01",
+    "process_name": "Ball Mount",
+    "process_group": "Back End",
+    "is_assembly": "Y",
+    "display_order": 7,
+    "is_active": true
+  }
+]

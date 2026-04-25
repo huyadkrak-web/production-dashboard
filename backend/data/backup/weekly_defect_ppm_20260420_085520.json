@@ -1,0 +1,46 @@
+[
+  {
+    "week": "WW16",
+    "total_ppm": 1220,
+    "defects": [
+      {
+        "name": "Chip Crack",
+        "value": 366
+      },
+      {
+        "name": "Die Shift",
+        "value": 122
+      },
+      {
+        "name": "Scratch",
+        "value": 366
+      },
+      {
+        "name": "PKG Broken",
+        "value": 122
+      }
+    ]
+  },
+  {
+    "week": "WW17",
+    "total_ppm": 378,
+    "defects": [
+      {
+        "name": "Chip Crack",
+        "value": 366
+      },
+      {
+        "name": "Die Shift",
+        "value": 12
+      },
+      {
+        "name": "Scratch",
+        "value": 0
+      },
+      {
+        "name": "PKG Broken",
+        "value": 0
+      }
+    ]
+  }
+]

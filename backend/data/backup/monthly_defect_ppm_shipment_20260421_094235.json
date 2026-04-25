@@ -1,0 +1,104 @@
+[
+  {
+    "label": "'26.4",
+    "total_ppm": 1220,
+    "defects": [
+      {
+        "name": "Chip Crack",
+        "value": 366
+      },
+      {
+        "name": "Die Shift",
+        "value": 122
+      },
+      {
+        "name": "Scratch",
+        "value": 366
+      },
+      {
+        "name": "PKG Broken",
+        "value": 122
+      },
+      {
+        "name": "PCB Dent",
+        "value": 122
+      },
+      {
+        "name": "기타",
+        "value": 122
+      },
+      {
+        "name": "",
+        "value": 0
+      }
+    ]
+  },
+  {
+    "label": "'26.5",
+    "total_ppm": 0,
+    "defects": [
+      {
+        "name": "Chip Crack",
+        "value": 0
+      },
+      {
+        "name": "Die Shift",
+        "value": 0
+      },
+      {
+        "name": "Scratch",
+        "value": 0
+      },
+      {
+        "name": "PKG Broken",
+        "value": 0
+      },
+      {
+        "name": "PCB Dent",
+        "value": 0
+      },
+      {
+        "name": "기타",
+        "value": 0
+      },
+      {
+        "name": "",
+        "value": 0
+      }
+    ]
+  },
+  {
+    "label": "'26.6",
+    "total_ppm": 0,
+    "defects": [
+      {
+        "name": "Chip Crack",
+        "value": 0
+      },
+      {
+        "name": "Die Shift",
+        "value": 0
+      },
+      {
+        "name": "Scratch",
+        "value": 0
+      },
+      {
+        "name": "PKG Broken",
+        "value": 0
+      },
+      {
+        "name": "PCB Dent",
+        "value": 0
+      },
+      {
+        "name": "기타",
+        "value": 0
+      },
+      {
+        "name": "",
+        "value": 0
+      }
+    ]
+  }
+]

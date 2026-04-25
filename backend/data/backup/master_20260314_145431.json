@@ -1,0 +1,29 @@
+[
+  {
+    "product": "UDP",
+    "process_code": "FCD01",
+    "process_name": "Controller D/A",
+    "process_group": "Front",
+    "is_assembly": "Y",
+    "display_order": 1,
+    "is_active": true
+  },
+  {
+    "product": "UDP",
+    "process_code": "FDA01",
+    "process_name": "D/A",
+    "process_group": "Front",
+    "is_assembly": "Y",
+    "display_order": 2,
+    "is_active": true
+  },
+  {
+    "product": "UDP",
+    "process_code": "FWB01",
+    "process_name": "W/B 1 (NAND+Cont)",
+    "process_group": "Front",
+    "is_assembly": "Y",
+    "display_order": 3,
+    "is_active": true
+  }
+]

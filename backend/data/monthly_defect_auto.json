@@ -1,0 +1,50 @@
+[
+  {
+    "month": "26.4",
+    "ao_qty": 20986,
+    "defect_total": 34,
+    "total_ppm": 1620.13,
+    "defects": [
+      {
+        "name": "Chip Crack",
+        "count": 12
+      },
+      {
+        "name": "PKG Broken",
+        "count": 7
+      },
+      {
+        "name": "die shift",
+        "count": 3
+      },
+      {
+        "name": "lead open",
+        "count": 1
+      },
+      {
+        "name": "pcb dent",
+        "count": 3
+      },
+      {
+        "name": "pcb scratch",
+        "count": 3
+      },
+      {
+        "name": "pkg 낙석",
+        "count": 1
+      },
+      {
+        "name": "단자 Scratch",
+        "count": 1
+      },
+      {
+        "name": "부풀음",
+        "count": 2
+      },
+      {
+        "name": "원자재 불량",
+        "count": 1
+      }
+    ]
+  }
+]

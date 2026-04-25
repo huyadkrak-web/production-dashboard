@@ -1,0 +1,32 @@
+[
+  {
+    "week": "WW16",
+    "total_ppm": 1220,
+    "defects": [
+      {
+        "name": "Chip Crack",
+        "value": 366
+      },
+      {
+        "name": "Die Shift",
+        "value": 122
+      },
+      {
+        "name": "Scratch",
+        "value": 366
+      },
+      {
+        "name": "PKG Broken",
+        "value": 122
+      },
+      {
+        "name": "PCB Dent",
+        "value": 122
+      },
+      {
+        "name": "기타",
+        "value": 122
+      }
+    ]
+  }
+]
