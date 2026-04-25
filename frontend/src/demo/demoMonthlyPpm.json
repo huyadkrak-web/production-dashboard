@@ -1,0 +1,33 @@
+[
+  {
+    "label": "제품Qual.('25.11)",
+    "total_ppm": 19684,
+    "defects": [
+      { "name": "Chip Crack", "value": 4200 },
+      { "name": "Die Shift", "value": 3100 },
+      { "name": "Scratch", "value": 12384 }
+    ]
+  },
+  {
+    "label": "'26.1",
+    "total_ppm": 2226,
+    "defects": [
+      { "name": "Pad Open", "value": 900 },
+      { "name": "Lead Open", "value": 326 },
+      { "name": "기타", "value": 1000 }
+    ]
+  },
+  {
+    "label": "'26.2",
+    "defects": [],
+    "total_ppm": 820
+  },
+  {
+    "label": "26.3",
+    "total_ppm": 786,
+    "defects": [
+      { "name": "PKG 낙석", "value": 200 },
+      { "name": "Scratch", "value": 586 }
+    ]
+  }
+]

@@ -1,0 +1,160 @@
+{
+  "meta": {
+    "base_date": "2026-03-18",
+    "prev_date": "2026-03-17",
+    "warnings": [],
+    "detected_sheets_today": ["작업일보(시연)", "UDP2.0"],
+    "detected_sheets_prev": ["전일작업일보(시연)", "UDP2.0"],
+    "month_label": "2026년 3월",
+    "month_plan_total": 288000,
+    "summary_title": "1. 생산 진척 현황 : 2026년 3월 생산계획(GOC) : 288,000ea"
+  },
+  "생산진척현황": [
+    {
+      "product": "",
+      "process_group": "Front",
+      "process_name": "Controller D/A",
+      "month_plan": 48000,
+      "prev_day_plan": 4800,
+      "cumulative_actual": 28500,
+      "progress_day": 62.5,
+      "progress_month": 59.4,
+      "prev_day_actual": 3000,
+      "remark": ""
+    },
+    {
+      "product": "UDP2.0",
+      "process_group": "Front",
+      "process_name": "D/A",
+      "month_plan": 48000,
+      "prev_day_plan": 4800,
+      "cumulative_actual": 31200,
+      "progress_day": 68.2,
+      "progress_month": 65.0,
+      "prev_day_actual": 3270,
+      "remark": ""
+    },
+    {
+      "product": "UDP2.0",
+      "process_group": "Front",
+      "process_name": "W/B 1 (NAND+Cont)",
+      "month_plan": 48000,
+      "prev_day_plan": 4800,
+      "cumulative_actual": 29800,
+      "progress_day": 65.1,
+      "progress_month": 62.1,
+      "prev_day_actual": 3120,
+      "remark": ""
+    },
+    {
+      "product": "UDP2.0",
+      "process_group": "Back End",
+      "process_name": "Mold",
+      "month_plan": 48000,
+      "prev_day_plan": 4800,
+      "cumulative_actual": 27650,
+      "progress_day": 58.8,
+      "progress_month": 57.6,
+      "prev_day_actual": 2820,
+      "remark": ""
+    },
+    {
+      "product": "UDP2.0",
+      "process_group": "Back End",
+      "process_name": "Laser Marking",
+      "month_plan": 48000,
+      "prev_day_plan": 4800,
+      "cumulative_actual": 26800,
+      "progress_day": 56.2,
+      "progress_month": 55.8,
+      "prev_day_actual": 2700,
+      "remark": ""
+    },
+    {
+      "product": "UDP2.0",
+      "process_group": "Back End",
+      "process_name": "PKG Singulation",
+      "month_plan": 48000,
+      "prev_day_plan": 4800,
+      "cumulative_actual": 25100,
+      "progress_day": 52.4,
+      "progress_month": 52.3,
+      "prev_day_actual": 2510,
+      "remark": ""
+    }
+  ],
+  "조립공정불량": [
+    {
+      "product": "",
+      "process_group": "Front",
+      "process_name": "Controller D/A",
+      "assembly_cumulative": 12000,
+      "assembly_prev_day": 1180,
+      "defect_prev_day_count": 1,
+      "defect_prev_day_ppm": 102,
+      "defect_cumulative_count": 7,
+      "defect_cumulative_ppm": 158,
+      "defect_cumulative_types": "Chip crack, Pad open"
+    },
+    {
+      "product": "UDP2.0",
+      "process_group": "Front",
+      "process_name": "D/A",
+      "assembly_cumulative": 31200,
+      "assembly_prev_day": 3270,
+      "defect_prev_day_count": 3,
+      "defect_prev_day_ppm": 248,
+      "defect_cumulative_count": 17,
+      "defect_cumulative_ppm": 285,
+      "defect_cumulative_types": ""
+    },
+    {
+      "product": "UDP2.0",
+      "process_group": "Front",
+      "process_name": "W/B 1 (NAND+Cont)",
+      "assembly_cumulative": 29800,
+      "assembly_prev_day": 3120,
+      "defect_prev_day_count": 2,
+      "defect_prev_day_ppm": 162,
+      "defect_cumulative_count": 12,
+      "defect_cumulative_ppm": 218,
+      "defect_cumulative_types": ""
+    },
+    {
+      "product": "UDP2.0",
+      "process_group": "Back End",
+      "process_name": "Mold",
+      "assembly_cumulative": 27650,
+      "assembly_prev_day": 2820,
+      "defect_prev_day_count": 2,
+      "defect_prev_day_ppm": 142,
+      "defect_cumulative_count": 11,
+      "defect_cumulative_ppm": 192,
+      "defect_cumulative_types": ""
+    },
+    {
+      "product": "UDP2.0",
+      "process_group": "Back End",
+      "process_name": "Laser Marking",
+      "assembly_cumulative": 26800,
+      "assembly_prev_day": 2700,
+      "defect_prev_day_count": 1,
+      "defect_prev_day_ppm": 74,
+      "defect_cumulative_count": 5,
+      "defect_cumulative_ppm": 95,
+      "defect_cumulative_types": ""
+    },
+    {
+      "product": "UDP2.0",
+      "process_group": "Back End",
+      "process_name": "PKG Singulation",
+      "assembly_cumulative": 25100,
+      "assembly_prev_day": 2510,
+      "defect_prev_day_count": 2,
+      "defect_prev_day_ppm": 198,
+      "defect_cumulative_count": 14,
+      "defect_cumulative_ppm": 242,
+      "defect_cumulative_types": "PCB Scratch, PKG Broken"
+    }
+  ]
+}
