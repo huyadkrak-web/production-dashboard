@@ -5,6 +5,15 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from pathlib import Path
+from typing import Any
+
+from .db import (
+    supabase_delete_all,
+    supabase_delete_where,
+    supabase_get,
+    supabase_get_eq,
+    supabase_insert,
+)
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 BACKUP_DIR = DATA_DIR / "backup"
@@ -23,34 +32,172 @@ def _backup(path: Path) -> None:
         backup_path.write_bytes(path.read_bytes())
 
 
+def _as_str(*, value: Any) -> str:
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
+def _as_display_order(value: Any) -> int:
+    if value is None:
+        return 0
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _as_is_active(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value in (1, "1", "true", "True", "Y", "y"):
+        return True
+    if value in (0, "0", "false", "False", "N", "n"):
+        return False
+    return bool(value)
+
+
+def _as_is_assembly(value: Any) -> str:
+    if value is None:
+        return "N"
+    if isinstance(value, bool):
+        return "Y" if value else "N"
+    s = str(value).strip().upper()
+    if s in ("Y", "YES", "1", "TRUE"):
+        return "Y"
+    if s in ("N", "NO", "0", "FALSE"):
+        return "N"
+    return s or "N"
+
+
+def _row_to_client(row: dict[str, Any]) -> dict:
+    return {
+        "product": _as_str(value=row.get("product")),
+        "process_code": _as_str(value=row.get("process_code")),
+        "process_name": _as_str(value=row.get("process_name")),
+        "process_group": _as_str(value=row.get("process_group")),
+        "is_assembly": _as_is_assembly(row.get("is_assembly")),
+        "display_order": _as_display_order(row.get("display_order")),
+        "is_active": _as_is_active(row.get("is_active")),
+    }
+
+
+def _normalize_master_row_for_save(row: dict[str, Any]) -> dict:
+    return {
+        "product": _as_str(value=row.get("product")),
+        "process_code": _as_str(value=row.get("process_code")),
+        "process_name": _as_str(value=row.get("process_name")),
+        "process_group": _as_str(value=row.get("process_group")),
+        "is_assembly": _as_is_assembly(row.get("is_assembly")),
+        "display_order": _as_display_order(row.get("display_order")),
+        "is_active": _as_is_active(row.get("is_active")),
+    }
+
+
 def get_master() -> list[dict]:
-    _ensure_dirs()
-    p = DATA_DIR / "master.json"
-    if not p.exists():
+    raw = supabase_get("master")
+    if not isinstance(raw, list):
         return []
-    return json.loads(p.read_text(encoding="utf-8"))
+    cleaned = [_row_to_client(r) for r in raw if isinstance(r, dict)]
+    return sorted(
+        cleaned,
+        key=lambda r: (
+            r["product"].lower(),
+            r["display_order"],
+            r["process_code"].lower(),
+        ),
+    )
 
 
 def save_master(data: list[dict]) -> None:
-    _ensure_dirs()
-    p = DATA_DIR / "master.json"
-    _backup(p)
-    p.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    rows = [_normalize_master_row_for_save(r) for r in data if isinstance(r, dict)]
+    supabase_delete_all("master")
+    if rows:
+        supabase_insert("master", rows)
+
+
+def _as_num_plan(value: Any) -> int | float:
+    if value is None or value is False:
+        return 0
+    if isinstance(value, bool):
+        return int(value)
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return 0
+    if f.is_integer():
+        return int(f)
+    return f
+
+
+def _first_product_by_process_code() -> dict[str, str]:
+    out: dict[str, str] = {}
+    for m in get_master():
+        if not isinstance(m, dict):
+            continue
+        pc = _as_str(value=m.get("process_code"))
+        if not pc or pc in out:
+            continue
+        out[pc] = _as_str(value=m.get("product"))
+    return out
+
+
+def _normalize_plan_row_for_save(row: dict[str, Any], month: str) -> dict[str, int | float | str]:
+    mkey = _as_str(value=month)
+    if "plan_qty" in row:
+        pqty = row.get("plan_qty")
+    else:
+        pqty = row.get("month_plan")
+    if "prev_qty" in row:
+        prevq = row.get("prev_qty")
+    else:
+        prevq = row.get("prev_day_plan")
+    return {
+        "month": mkey,
+        "process_code": _as_str(value=row.get("process_code")),
+        "plan_qty": _as_num_plan(pqty),
+        "prev_qty": _as_num_plan(prevq),
+    }
+
+
+def _row_plan_to_client(
+    row: dict[str, Any], product_by_code: dict[str, str]
+) -> dict:
+    pc = _as_str(value=row.get("process_code"))
+    return {
+        "month": _as_str(value=row.get("month")),
+        "product": product_by_code.get(pc, ""),
+        "process_code": pc,
+        "month_plan": _as_num_plan(row.get("plan_qty")),
+        "prev_day_plan": _as_num_plan(row.get("prev_qty")),
+    }
 
 
 def get_plan(month: str) -> list[dict]:
-    _ensure_dirs()
-    p = DATA_DIR / f"plan_{month}.json"
-    if not p.exists():
+    mkey = _as_str(value=month)
+    raw = supabase_get_eq("monthly_plan", "month", mkey)
+    if not isinstance(raw, list):
         return []
-    return json.loads(p.read_text(encoding="utf-8"))
+    product_by = _first_product_by_process_code()
+    rows = [_row_plan_to_client(r, product_by) for r in raw if isinstance(r, dict)]
+    return sorted(
+        rows,
+        key=lambda r: (r["process_code"].lower(), r["product"].lower()),
+    )
 
 
 def save_plan(month: str, data: list[dict]) -> None:
-    _ensure_dirs()
-    p = DATA_DIR / f"plan_{month}.json"
-    _backup(p)
-    p.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    mkey = _as_str(value=month)
+    rows = [
+        _normalize_plan_row_for_save(r, mkey)
+        for r in data
+        if isinstance(r, dict)
+    ]
+    for row in rows:
+        row["month"] = mkey
+    supabase_delete_where("monthly_plan", "month", mkey)
+    if rows:
+        supabase_insert("monthly_plan", rows)
 
 
 def get_defects() -> list[dict]:

@@ -1,26 +1,13 @@
-"""공장 받기(parse_shipment) 데이터 누적 JSON 저장."""
+"""공장 받기(parse_shipment) 데이터 누적 저장 (Supabase)."""
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
-
 import pandas as pd
 
+from ..db import supabase_delete_all, supabase_delete_by_filters, supabase_get, supabase_insert
 from .calculator import get_week_label
 
-_SHIPMENT_PATH = (
-    Path(__file__).resolve().parent.parent.parent / "data" / "shipment_lots.json"
-)
-
 _SHIPMENT_COLS = ["move_date", "week", "lot_id", "product", "move_qty"]
-
-
-def _read_shipment_file() -> list[dict]:
-    if not _SHIPMENT_PATH.is_file():
-        return []
-    with _SHIPMENT_PATH.open(encoding="utf-8") as f:
-        return json.load(f)
 
 
 def _df_to_shipment_records(df: pd.DataFrame) -> list[dict]:
@@ -34,6 +21,42 @@ def _df_to_shipment_records(df: pd.DataFrame) -> list[dict]:
     out["lot_id"] = out["lot_id"].astype(str)
     out["product"] = out["product"].map(lambda x: "" if pd.isna(x) else str(x))
     return out.to_dict(orient="records")
+
+
+def _to_shipment_row(row: dict) -> dict:
+    move_date = pd.to_datetime(row.get("move_date"), errors="coerce")
+    if pd.isna(move_date):
+        return {}
+    lot_id = "" if pd.isna(row.get("lot_id")) else str(row.get("lot_id")).strip()
+    product = "" if pd.isna(row.get("product")) else str(row.get("product")).strip()
+    qty = pd.to_numeric(row.get("move_qty"), errors="coerce")
+    move_qty = float(qty) if pd.notna(qty) else 0.0
+    if float(move_qty).is_integer():
+        move_qty = int(move_qty)
+    move_date_str = move_date.strftime("%Y-%m-%d")
+    week = row.get("week")
+    week_str = str(week).strip() if week is not None else ""
+    if not week_str:
+        week_str = get_week_label(move_date)
+    return {
+        "move_date": move_date_str,
+        "week": week_str,
+        "lot_id": lot_id,
+        "product": product,
+        "move_qty": move_qty,
+    }
+
+
+def _dedupe_by_key_keep_last(records: list[dict]) -> list[dict]:
+    by_key: dict[tuple[str, str, str], dict] = {}
+    for row in records:
+        key = (
+            str(row.get("move_date", "")).strip(),
+            str(row.get("lot_id", "")).strip(),
+            str(row.get("product", "")).strip(),
+        )
+        by_key[key] = row
+    return list(by_key.values())
 
 
 def _build_shipment_summary(records: list[dict]) -> dict | None:
@@ -69,43 +92,38 @@ def _build_shipment_summary(records: list[dict]) -> dict | None:
 
 
 def save_shipment(df: pd.DataFrame) -> dict | None:
-    """``parse_shipment`` 결과를 주 단위 필드와 함께 ``shipment_lots.json``에 누적 저장합니다."""
-    new_rows = _df_to_shipment_records(df)
-    existing = _read_shipment_file()
-
-    merged = pd.concat(
-        [
-            pd.DataFrame(existing, columns=_SHIPMENT_COLS)
-            if existing
-            else pd.DataFrame(columns=_SHIPMENT_COLS),
-            pd.DataFrame(new_rows, columns=_SHIPMENT_COLS)
-            if new_rows
-            else pd.DataFrame(columns=_SHIPMENT_COLS),
-        ],
-        ignore_index=True,
-    )
-    if merged.empty:
-        records: list[dict] = []
-    else:
-        merged = merged.drop_duplicates(
-            subset=["move_date", "lot_id", "product"],
-            keep="last",
+    """``parse_shipment`` 결과를 Supabase ``shipment`` 테이블에 누적 저장합니다."""
+    new_rows = _dedupe_by_key_keep_last(_df_to_shipment_records(df))
+    for row in new_rows:
+        supabase_delete_by_filters(
+            "shipment",
+            {
+                "move_date": str(row["move_date"]),
+                "lot_id": str(row["lot_id"]),
+                "product": str(row["product"]),
+            },
         )
-        records = merged.to_dict(orient="records")
-
-    _SHIPMENT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with _SHIPMENT_PATH.open("w", encoding="utf-8") as f:
-        json.dump(records, f, ensure_ascii=False, indent=2)
+    if new_rows:
+        supabase_insert("shipment", new_rows)
+    records = load_shipment()
     print("[shipment] saved")
     return _build_shipment_summary(records)
 
 
 def load_shipment() -> list[dict]:
-    """저장된 출하 LOT JSON을 반환합니다. 파일이 없으면 빈 리스트입니다."""
-    if not _SHIPMENT_PATH.is_file():
+    """저장된 출하 LOT 레코드를 Supabase에서 조회합니다."""
+    raw = supabase_get("shipment")
+    if not isinstance(raw, list):
         return []
-    with _SHIPMENT_PATH.open(encoding="utf-8") as f:
-        data = json.load(f)
+    rows: list[dict] = []
+    for r in raw:
+        if not isinstance(r, dict):
+            continue
+        normalized = _to_shipment_row(r)
+        if not normalized:
+            continue
+        rows.append(normalized)
+    data = rows
     print("[shipment] loaded")
     return data
 
@@ -116,7 +134,6 @@ def get_shipment_summary() -> dict | None:
 
 
 def clear_shipment() -> None:
-    """출하 LOT JSON 파일을 삭제합니다."""
-    if _SHIPMENT_PATH.is_file():
-        _SHIPMENT_PATH.unlink()
+    """Supabase ``shipment`` 테이블 데이터를 전체 삭제합니다."""
+    supabase_delete_all("shipment")
     print("[shipment] cleared")
