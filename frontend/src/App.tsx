@@ -1176,6 +1176,7 @@ export default function App() {
   /** 입력 카드에서 선택; 공정불량 자동 계산 시 defect_file로 전송(생산일보 계산은 미사용, 상태만 보관). */
   const [codeDefectFile, setCodeDefectFile] = useState<File | null>(null);
   const [masterRows, setMasterRows] = useState<MasterRow[]>([]);
+  const masterRenderRows = masterRows;
   const [planRows, setPlanRows] = useState<PlanRow[]>([]);
   const [planMonth, setPlanMonth] = useState<string>(() => {
     const d = new Date();
@@ -1403,8 +1404,43 @@ export default function App() {
   async function loadMaster() {
     setError(null);
     try {
-      const rows = await getMaster();
-      setMasterRows(rows);
+      const apiRows = await getMaster();
+      console.log("[master load] rows", Array.isArray(apiRows) ? apiRows.length : 0, apiRows);
+
+      const mappedRows = (Array.isArray(apiRows) ? apiRows : []).map((row, idx): MasterRow => {
+        const o = (row ?? {}) as Record<string, unknown>;
+        const isAssemblyRaw = o.is_assembly ?? o.isAssembly;
+        const isAssembly =
+          typeof isAssemblyRaw === "boolean"
+            ? isAssemblyRaw
+              ? "Y"
+              : "N"
+            : String(isAssemblyRaw ?? "N")
+                .trim()
+                .toUpperCase();
+        const isActiveRaw = o.is_active ?? o.isActive;
+        return {
+          product: String(o.product ?? "").trim(),
+          process_code: String(o.process_code ?? o.processCode ?? "").trim(),
+          process_name: String(o.process_name ?? o.processName ?? "").trim(),
+          process_group: String(o.process_group ?? o.processGroup ?? "").trim(),
+          is_assembly: isAssembly === "Y" ? "Y" : "N",
+          display_order: Number.isFinite(Number(o.display_order ?? o.displayOrder))
+            ? Number(o.display_order ?? o.displayOrder)
+            : idx,
+          is_active:
+            typeof isActiveRaw === "boolean"
+              ? isActiveRaw
+              : String(isActiveRaw ?? "")
+                  .trim()
+                  .toLowerCase() === "true" ||
+                String(isActiveRaw ?? "").trim() === "1" ||
+                String(isActiveRaw ?? "").trim().toUpperCase() === "Y",
+        };
+      });
+
+      console.log("[master load mapped]", mappedRows.length, mappedRows);
+      setMasterRows(mappedRows);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -1413,11 +1449,34 @@ export default function App() {
   async function saveMaster() {
     setError(null);
     try {
-      await postMaster(masterRows);
+      const payload = masterRenderRows
+        .map((row) => ({
+          product: String(row.product ?? "").trim(),
+          process_code: String(row.process_code ?? "").trim(),
+          process_name: String(row.process_name ?? "").trim(),
+          process_group: String(row.process_group ?? "").trim(),
+          is_assembly: String(row.is_assembly ?? "N")
+            .trim()
+            .toUpperCase(),
+          display_order: Number(row.display_order) || 0,
+          is_active: Boolean(row.is_active),
+        }))
+        .filter((row) => row.process_code !== "");
+
+      console.log("[master save] payload", {
+        count: payload.length,
+        rows: payload,
+      });
+
+      await postMaster(payload);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
   }
+
+  useEffect(() => {
+    console.log("[master render rows]", masterRenderRows.length, masterRenderRows);
+  }, [masterRenderRows]);
 
   function addMasterRow() {
     setMasterRows((prev) => [
@@ -2243,7 +2302,7 @@ export default function App() {
               </tr>
             </thead>
             <tbody>
-              {masterRows.map((row, i) => (
+              {masterRenderRows.map((row, i) => (
                 <tr key={i}>
                   <td>
                     <input
