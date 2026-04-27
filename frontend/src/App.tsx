@@ -1813,16 +1813,39 @@ export default function App() {
   }
 
   async function downloadPdf(baseDateStr: string) {
-    const wrap = pdfOnePageRef.current;
-    if (!wrap) {
+    const target = pdfOnePageRef.current;
+    console.log("[PDF target]", target, target?.offsetWidth, target?.offsetHeight);
+    if (!target || target.offsetHeight === 0 || target.offsetWidth === 0) {
       console.error(
         "[PDF] pdfOnePageRef가 없습니다. 페이지를 새로고침한 뒤 PDF 다운로드를 다시 시도해 주세요.",
       );
+      window.alert("PDF 캡처 대상이 준비되지 않았습니다. 계산 결과가 렌더링된 뒤 다시 시도해 주세요.");
       return;
     }
     const captureWeekly = weeklyDefectRef.current;
     const captureMonthly = monthlyDefectRef.current;
+    const contentTarget = target.querySelector("[data-pdf-capture-root]") as HTMLElement | null;
+    const captureTarget = contentTarget ?? target;
     const scale = 2;
+    const prevInline = {
+      position: target.style.position,
+      left: target.style.left,
+      top: target.style.top,
+      zIndex: target.style.zIndex,
+      opacity: target.style.opacity,
+      visibility: target.style.visibility,
+      display: target.style.display,
+      pointerEvents: target.style.pointerEvents,
+      backgroundColor: target.style.backgroundColor,
+      overflow: target.style.overflow,
+    };
+    const prevContentInline = {
+      display: captureTarget.style.display,
+      visibility: captureTarget.style.visibility,
+      opacity: captureTarget.style.opacity,
+      overflow: captureTarget.style.overflow,
+    };
+    const prevAriaHidden = target.getAttribute("aria-hidden");
     const html2canvasOptsForOnePage = {
       scale,
       backgroundColor: "#ffffff",
@@ -1856,7 +1879,40 @@ export default function App() {
     };
 
     try {
-      wrap.classList.add("pdf-export-mode");
+      // html2canvas가 offscreen/hidden 상태를 흰 화면으로 처리하지 않도록 캡처 직전 표시 상태로 전환
+      target.style.position = "absolute";
+      target.style.left = "0px";
+      target.style.top = "0px";
+      target.style.zIndex = "9999";
+      target.style.opacity = "1";
+      target.style.visibility = "visible";
+      target.style.display = "block";
+      target.style.pointerEvents = "none";
+      target.style.backgroundColor = "#ffffff";
+      target.style.overflow = "visible";
+      target.removeAttribute("aria-hidden");
+      captureTarget.style.display = "block";
+      captureTarget.style.visibility = "visible";
+      captureTarget.style.opacity = "1";
+      captureTarget.style.overflow = "visible";
+      const cs = getComputedStyle(target);
+      console.log(
+        "[PDF computed]",
+        cs.position,
+        cs.left,
+        cs.zIndex,
+        cs.visibility,
+        cs.opacity,
+      );
+      console.log("[PDF size]", {
+        offsetWidth: captureTarget.offsetWidth,
+        offsetHeight: captureTarget.offsetHeight,
+        scrollWidth: captureTarget.scrollWidth,
+        scrollHeight: captureTarget.scrollHeight,
+        rect: captureTarget.getBoundingClientRect(),
+      });
+
+      target.classList.add("pdf-export-mode");
       if (captureWeekly) captureWeekly.classList.add("pdf-export-mode");
       if (captureMonthly) captureMonthly.classList.add("pdf-export-mode");
       setPdfCapture(true);
@@ -1910,8 +1966,8 @@ export default function App() {
       await new Promise<void>((r) => setTimeout(r, 280));
 
       const readChartImgs = () => {
-        const wPh = wrap.querySelector("[data-pdf-chart-placeholder=\"weekly-ppm\"]");
-        const mPh = wrap.querySelector("[data-pdf-chart-placeholder=\"monthly-ppm\"]");
+        const wPh = target.querySelector("[data-pdf-chart-placeholder=\"weekly-ppm\"]");
+        const mPh = target.querySelector("[data-pdf-chart-placeholder=\"monthly-ppm\"]");
         const wImg = wPh?.querySelector("img");
         const mImg = mPh?.querySelector("img");
         return {
@@ -1968,9 +2024,27 @@ export default function App() {
         });
       }
 
+      // 렌더가 끝났지만 실제 캡처 박스가 0이면 흰 페이지가 되므로 중단
+      console.log("[PDF target]", target, target.offsetWidth, target.offsetHeight);
+      if (!target.offsetWidth || !target.offsetHeight) {
+        window.alert("PDF 캡처 대상 높이가 0입니다. 화면 렌더링 후 다시 시도해 주세요.");
+        return;
+      }
+
       console.log("[PDF][ONEPAGE] wrapper capture 시작");
-      const canvas = await html2canvas(wrap, html2canvasOptsForOnePage);
+      const canvas = await html2canvas(captureTarget, {
+        ...html2canvasOptsForOnePage,
+        width: Math.max(1, captureTarget.scrollWidth),
+        height: Math.max(1, captureTarget.scrollHeight),
+        windowWidth: Math.max(1, captureTarget.scrollWidth),
+        windowHeight: Math.max(1, captureTarget.scrollHeight),
+      });
       console.log("[PDF][ONEPAGE] wrapper capture 완료");
+      console.log("[PDF canvas]", canvas.width, canvas.height);
+      if (canvas.height < 200) {
+        window.alert("PDF 캡처 높이가 비정상적으로 작습니다.");
+        return;
+      }
 
       if (!canvas.width || !canvas.height) {
         throw new Error(
@@ -1996,9 +2070,28 @@ export default function App() {
       console.error("[PDF ERROR]", pdfErr);
     } finally {
       setPdfCapture(false);
-      wrap.classList.remove("pdf-export-mode");
+      target.classList.remove("pdf-export-mode");
       if (captureWeekly) captureWeekly.classList.remove("pdf-export-mode");
       if (captureMonthly) captureMonthly.classList.remove("pdf-export-mode");
+      target.style.position = prevInline.position;
+      target.style.left = prevInline.left;
+      target.style.top = prevInline.top;
+      target.style.zIndex = prevInline.zIndex;
+      target.style.opacity = prevInline.opacity;
+      target.style.visibility = prevInline.visibility;
+      target.style.display = prevInline.display;
+      target.style.pointerEvents = prevInline.pointerEvents;
+      target.style.backgroundColor = prevInline.backgroundColor;
+      target.style.overflow = prevInline.overflow;
+      captureTarget.style.display = prevContentInline.display;
+      captureTarget.style.visibility = prevContentInline.visibility;
+      captureTarget.style.opacity = prevContentInline.opacity;
+      captureTarget.style.overflow = prevContentInline.overflow;
+      if (prevAriaHidden == null) {
+        target.removeAttribute("aria-hidden");
+      } else {
+        target.setAttribute("aria-hidden", prevAriaHidden);
+      }
     }
   }
 
@@ -2806,7 +2899,7 @@ export default function App() {
         style={PDF_ONE_PAGE_ROOT_STYLE}
       >
         <style dangerouslySetInnerHTML={{ __html: PDF_ONE_PAGE_INJECTED_CSS }} />
-        <div style={PDF_ONE_PAGE_INNER_STYLE}>
+        <div data-pdf-capture-root="true" style={PDF_ONE_PAGE_INNER_STYLE}>
           <div style={PDF_ONE_PAGE_TABLE_HOST_STYLE}>
             <section className="card">
               {/*
