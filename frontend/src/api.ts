@@ -217,6 +217,21 @@ export type DefectAutoShipmentSummary = {
   total_qty: number;
 };
 
+export type DefectAutoLotDefectItem = {
+  name: string;
+  count: number;
+  ppm: number;
+};
+
+export type DefectAutoLotDefectRow = {
+  lot_id: string;
+  move_date: string;
+  move_qty: number;
+  defect_total: number;
+  total_ppm: number;
+  defects: DefectAutoLotDefectItem[];
+};
+
 /** POST /defect-auto/compute — 코드별 불량현황+작업일보 업로드 후 주·월 자동 집계·저장 */
 export async function computeDefectAuto(
   defectFile: File,
@@ -266,6 +281,19 @@ export async function getDefectAutoShipmentSummary(): Promise<{
   return res.json() as Promise<{
     status: string;
     shipment_summary: DefectAutoShipmentSummary | null;
+  }>;
+}
+
+/** GET /defect-auto/lot-defects — 최근 자동계산 기준 LOT별 불량율(PPM) */
+export async function getDefectAutoLotDefects(): Promise<{
+  status: string;
+  lot_defects: DefectAutoLotDefectRow[];
+}> {
+  const res = await fetch(`${API_BASE}/defect-auto/lot-defects`);
+  if (!res.ok) throw new Error(`GET /defect-auto/lot-defects failed: ${res.status}`);
+  return res.json() as Promise<{
+    status: string;
+    lot_defects: DefectAutoLotDefectRow[];
   }>;
 }
 

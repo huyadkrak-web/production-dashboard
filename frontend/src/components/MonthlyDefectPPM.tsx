@@ -178,7 +178,7 @@ function MonthlyChartManualLegend({ labels }: { labels: string[] }) {
           }}
           aria-hidden
         />
-        총 불량율(PPM)
+        총 불량율(ppm)
       </span>
     </div>
   );
@@ -390,7 +390,7 @@ const MonthlyDefectPPM = React.forwardRef<HTMLDivElement, MonthlyDefectPPMProps>
 
     return (
       <section className="card" ref={ref}>
-        <h2 className="cardTitle">월별 조립 불량율(PPM) 관리</h2>
+        <h2 className="cardTitle">월별 조립 불량율(ppm) 관리</h2>
         <p className="hint" style={{ marginBottom: 10 }}>
           주차별 원데이터(ao_qty·defect_total·불량 건수)를 월 라벨로 묶어 합산한 뒤 PPM으로 표시합니다. 월
           라벨은 주차 문자열이 <code>26.4</code> 형태이면 그대로 쓰고, <code>WW16</code> 형태이면 기준 연도
@@ -426,18 +426,20 @@ const MonthlyDefectPPM = React.forwardRef<HTMLDivElement, MonthlyDefectPPMProps>
           ref={tableCaptureRef}
           style={{
             background: "#ffffff",
-            overflow: "visible",
+            overflowX: "auto",
+            maxWidth: "100%",
+            minWidth: 0,
             minHeight: 80,
           }}
         >
-          <div className="tableWrap" style={{ overflowX: "auto", marginBottom: 16 }}>
-            <table className="table">
+          <div className="tableWrap" style={{ overflowX: "hidden", marginBottom: 16, maxWidth: "100%" }}>
+            <table className="table defect-ppm-compact-table monthly-defect-compact-table">
               <thead>
                 <tr>
                   <th>월</th>
-                  <th style={{ textAlign: "right" }}>불량율(PPM)</th>
+                  <th style={{ textAlign: "center" }}>불량율(ppm)</th>
                   {defectColumnNames.map((colName, ci) => (
-                    <th key={ci} style={{ textAlign: "left", minWidth: 100 }}>
+                    <th key={ci} style={{ textAlign: "center", minWidth: 0 }}>
                       {String(colName).trim() !== "" ? colName : "—"}
                     </th>
                   ))}
@@ -455,13 +457,13 @@ const MonthlyDefectPPM = React.forwardRef<HTMLDivElement, MonthlyDefectPPMProps>
                   rows.map((row, i) => (
                     <tr key={i}>
                       <td style={{ fontWeight: 600 }}>{row.label}</td>
-                      <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                      <td style={{ textAlign: "center", fontVariantNumeric: "tabular-nums", color: "#ef4444" }}>
                         {num(row.total_ppm) === 0 ? "" : formatPpmKr(num(row.total_ppm))}
                       </td>
                       {defectColumnNames.map((_, ci) => (
                         <td
                           key={ci}
-                          style={{ textAlign: "right", fontVariantNumeric: "tabular-nums", color: "#334155" }}
+                          style={{ textAlign: "center", fontVariantNumeric: "tabular-nums" }}
                         >
                           {num(row.defectValues[ci]) === 0 ? "" : formatPpmKr(num(row.defectValues[ci]))}
                         </td>
@@ -513,7 +515,7 @@ const MonthlyDefectPPM = React.forwardRef<HTMLDivElement, MonthlyDefectPPMProps>
                 <PdfReportIconBadge Icon={ChartColumn} title={PDF_CHART_SECTION_TITLE_MONTHLY_PPM} />
               ) : null}
               <span>
-                {pdfExportMode ? PDF_CHART_SECTION_TITLE_MONTHLY_PPM : "월별 조립 불량율(PPM) 현황"}
+                {pdfExportMode ? PDF_CHART_SECTION_TITLE_MONTHLY_PPM : "월별 조립 불량율(ppm) 현황"}
               </span>
             </div>
             <div
@@ -595,7 +597,7 @@ const MonthlyDefectPPM = React.forwardRef<HTMLDivElement, MonthlyDefectPPMProps>
                       <Line
                         type="monotone"
                         dataKey="total_ppm"
-                        name="총 불량율(PPM)"
+                        name="총 불량율(ppm)"
                         stroke={WEEKLY_TOTAL_PPM_LINE_COLOR}
                         strokeWidth={LINE_STROKE_WIDTH}
                         dot={{ r: 4 }}
@@ -662,7 +664,7 @@ const MonthlyDefectPPM = React.forwardRef<HTMLDivElement, MonthlyDefectPPMProps>
                         <Line
                           type="monotone"
                           dataKey="total_ppm"
-                          name="총 불량율(PPM)"
+                          name="총 불량율(ppm)"
                           stroke={WEEKLY_TOTAL_PPM_LINE_COLOR}
                           strokeWidth={LINE_STROKE_WIDTH}
                           dot={{ r: 4 }}

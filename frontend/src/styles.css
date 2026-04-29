@@ -17,7 +17,8 @@
 
 html {
   width: 100%;
-  min-width: 100%;
+  min-width: 0;
+  max-width: 100%;
   margin: 0;
   height: 100%;
 }
@@ -25,7 +26,8 @@ html {
 body {
   margin: 0;
   width: 100%;
-  min-width: 100%;
+  min-width: 0;
+  max-width: 100%;
   height: 100%;
   display: flex;
   justify-content: center;
@@ -48,7 +50,8 @@ body {
 
 #root {
   width: 100%;
-  min-width: 100%;
+  min-width: 0;
+  max-width: 100vw;
   margin: 0;
   min-height: 100%;
   display: flex;
@@ -58,11 +61,19 @@ body {
 
 .page {
   width: min(1440px, 100%);
+  max-width: 100%;
+  min-width: 0;
   margin: 0 auto;
   box-sizing: border-box;
   padding: 28px 18px 80px;
   display: grid;
   gap: 14px;
+}
+
+/* 그리드 항목 기본 min-width:auto로 인한 우측 밀림 방지 */
+.page > * {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .topbar {
@@ -262,6 +273,95 @@ input.app-base-date-input[type="date"]::-webkit-calendar-picker-indicator:hover 
   width: 100%;
   border-collapse: collapse;
   min-width: 860px;
+}
+
+/* 주차/월별 불량 PPM 관리표: 입력보다 가독 중심 압축(스크롤 없이 한 화면에 최대한 표시) */
+.defect-ppm-compact-table {
+  min-width: 0;
+  width: 100%;
+  table-layout: fixed;
+}
+
+.defect-ppm-compact-table th,
+.defect-ppm-compact-table td {
+  padding: 8px 6px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.92);
+  border-left: 1px solid rgba(255, 255, 255, 0.22);
+  border-right: 1px solid rgba(255, 255, 255, 0.22);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.24);
+}
+
+.defect-ppm-compact-table input {
+  font-size: 12px;
+  padding: 6px 4px;
+  color: rgba(255, 255, 255, 0.92);
+  background: rgba(15, 20, 38, 0.72);
+  border-color: rgba(255, 255, 255, 0.24);
+}
+
+.defect-ppm-compact-table th {
+  background: rgba(15, 20, 38, 0.94);
+  color: rgba(255, 255, 255, 0.92);
+  border-top: 1px solid rgba(255, 255, 255, 0.3);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.32);
+}
+
+.defect-ppm-compact-table td {
+  background: rgba(8, 12, 26, 0.65);
+}
+
+/* 불량명 헤더(가변 컬럼)만 1pt 축소 */
+.weekly-defect-compact-table th:nth-child(n + 5) {
+  font-size: 11px;
+  text-align: center !important;
+  white-space: normal;
+  word-break: keep-all;
+  line-height: 1.2;
+}
+
+.monthly-defect-compact-table th:nth-child(n + 3) {
+  font-size: 11px;
+  text-align: center !important;
+}
+
+.weekly-defect-compact-table th:nth-child(1),
+.weekly-defect-compact-table td:nth-child(1) {
+  width: 70px;
+}
+
+.weekly-defect-compact-table th:nth-child(2),
+.weekly-defect-compact-table td:nth-child(2) {
+  width: 98px;
+}
+
+.weekly-defect-compact-table th:nth-child(3),
+.weekly-defect-compact-table td:nth-child(3),
+.weekly-defect-compact-table th:nth-child(4),
+.weekly-defect-compact-table td:nth-child(4) {
+  width: 96px;
+}
+
+.weekly-defect-compact-table th:last-child,
+.weekly-defect-compact-table td:last-child {
+  width: 56px;
+}
+
+.weekly-defect-compact-table th,
+.weekly-defect-compact-table td,
+.monthly-defect-compact-table th,
+.monthly-defect-compact-table td {
+  text-align: center !important;
+}
+
+.monthly-defect-compact-table th:nth-child(1),
+.monthly-defect-compact-table td:nth-child(1) {
+  width: 76px;
+}
+
+.monthly-defect-compact-table th:nth-child(2),
+.monthly-defect-compact-table td:nth-child(2) {
+  width: 96px;
 }
 
 .table th,
@@ -586,6 +686,12 @@ input.app-base-date-input[type="date"]::-webkit-calendar-picker-indicator:hover 
   padding: 16px 18px 18px !important;
   box-sizing: border-box !important;
 }
+/* PDF 2페이지 LOT 카드 외곽: 1페이지 카드와 같은 진한 톤 */
+.pdf-export-mode[data-pdf-lot-card="true"] .card {
+  border: 2px solid #94a3b8 !important;
+  border-radius: 14px !important;
+  box-sizing: border-box !important;
+}
 .pdf-export-mode .cardTitle,
 .pdf-export-mode .metaK,
 .pdf-export-mode .metaV,
@@ -645,7 +751,7 @@ input.app-base-date-input[type="date"]::-webkit-calendar-picker-indicator:hover 
 .pdf-export-mode .table tr:hover td {
   background: #fff !important;
 }
-.pdf-export-mode > .card:first-child {
+.pdf-export-mode:not([data-pdf-lot-card="true"]) > .card:first-child {
   display: none;
 }
 .pdf-export-mode .weekly-defect-ppm-chart,

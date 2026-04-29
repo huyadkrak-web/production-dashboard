@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
 from .calculator import (
+    compute_lot_defect_ppm_from_shipments,
     compute_monthly_defect_from_shipments,
     compute_weekly_defect_from_shipments,
 )
@@ -18,6 +19,7 @@ from .storage import (
 )
 
 router = APIRouter(prefix="/defect-auto", tags=["defect-auto"])
+_latest_lot_defects: list[dict] = []
 
 
 @router.post("/shipment")
@@ -54,6 +56,8 @@ async def defect_auto_compute(
         shipments = load_shipment()
         weekly = compute_weekly_defect_from_shipments(shipments, defect_df, work_df)
         monthly = compute_monthly_defect_from_shipments(shipments, defect_df, work_df)
+        global _latest_lot_defects
+        _latest_lot_defects = compute_lot_defect_ppm_from_shipments(shipments, defect_df)
         save_weekly_auto(weekly)
         save_monthly_auto(monthly)
         return {"status": "ok", "weekly": weekly, "monthly": monthly}
@@ -82,3 +86,9 @@ def defect_auto_shipment_summary() -> dict:
     """출하 누적 요약(min/max date, lot 개수, move_qty 합계)을 반환합니다."""
     summary = get_shipment_summary()
     return {"status": "ok", "shipment_summary": summary}
+
+
+@router.get("/lot-defects")
+def defect_auto_lot_defects() -> dict:
+    """최근 자동계산 기준 LOT별 조립 불량율(PPM) 집계를 반환합니다."""
+    return {"status": "ok", "lot_defects": _latest_lot_defects}

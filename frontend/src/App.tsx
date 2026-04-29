@@ -13,6 +13,7 @@ import { PdfReportIconBadge } from "./components/PdfReportIconBadge";
 import WeeklyDefectPPM from "./components/WeeklyDefectPPM";
 import MonthlyDefectPPM from "./components/MonthlyDefectPPM";
 import DefectAutoUploadPanel from "./components/DefectAutoUploadPanel";
+import LotDefectPpm from "./components/LotDefectPpm";
 import html2canvas from "html2canvas";
 import { jsPDF } from "jspdf";
 import * as XLSX from "xlsx";
@@ -37,6 +38,7 @@ import {
 } from "./pdfChartSectionTitles";
 import {
   buildWeeklyPdfLegendEntries,
+  PDF_ONE_PAGE_ROOT_WIDTH_PX,
   type WeeklyPdfLegendEntry,
 } from "./weeklyDefectPpmShared";
 
@@ -450,6 +452,54 @@ const PDF_ONE_PAGE_TABLE_HOST_STYLE: CSSProperties = {
 /** 1페이지 PDF 전용 wrapper 차트 주입용 (downloadPdf 3페이지 경로와 별도, 동일 선택·래스터 규칙) */
 const PDF_ONE_PAGE_SVG_RASTER_SCALE = 2;
 
+/** jsPDF에 넣을 래스터 크기·위치(mm) — 1·2페이지 동일 규칙(가로 우선, 세로 넘치면 가로 축소·가운데) */
+function defectPpmPdfRasterDestMm(
+  canvasPxW: number,
+  canvasPxH: number,
+  pageWmm: number,
+  pageHmm: number,
+): { imgWidthMm: number; imgHeightMm: number; xMm: number; yMm: number } {
+  let imgWidthMm = pageWmm;
+  let imgHeightMm = (canvasPxH * imgWidthMm) / canvasPxW;
+  if (imgHeightMm > pageHmm) {
+    imgHeightMm = pageHmm;
+    imgWidthMm = (canvasPxW * imgHeightMm) / canvasPxH;
+  }
+  return {
+    imgWidthMm,
+    imgHeightMm,
+    xMm: (pageWmm - imgWidthMm) / 2,
+    yMm: 2,
+  };
+}
+
+/** 2페이지 LOT: 1페이지에 실린 래스터와 동일 이상으로 가로가 커지지 않게(양옆 여백 동일감) */
+function defectPpmPdfRasterDestMmCappedToMaxWidth(
+  canvasPxW: number,
+  canvasPxH: number,
+  pageWmm: number,
+  pageHmm: number,
+  maxWidthMm: number,
+): { imgWidthMm: number; imgHeightMm: number; xMm: number; yMm: number } {
+  let { imgWidthMm, imgHeightMm, xMm, yMm } = defectPpmPdfRasterDestMm(
+    canvasPxW,
+    canvasPxH,
+    pageWmm,
+    pageHmm,
+  );
+  if (imgWidthMm <= maxWidthMm) {
+    return { imgWidthMm, imgHeightMm, xMm, yMm };
+  }
+  imgWidthMm = maxWidthMm;
+  imgHeightMm = (canvasPxH * imgWidthMm) / canvasPxW;
+  if (imgHeightMm > pageHmm) {
+    imgHeightMm = pageHmm;
+    imgWidthMm = (canvasPxW * imgHeightMm) / canvasPxH;
+  }
+  xMm = (pageWmm - imgWidthMm) / 2;
+  return { imgWidthMm, imgHeightMm, xMm, yMm };
+}
+
 function selectLargestSvgFromRoot(root: HTMLElement | null) {
   if (!root) return null;
   const list = Array.from(root.querySelectorAll("svg"));
@@ -482,6 +532,26 @@ function selectLargestSvgFromRoot(root: HTMLElement | null) {
   }
   if (w <= 0 || h <= 0) return null;
   return { svg: bestEl, index: bestIdx, width: w, height: h };
+}
+
+/** data: URL 등으로 `<img>`가 디코드된 뒤에만 html2canvas를 호출하기 위한 대기 */
+async function awaitLotPdfChartImgReady(img: HTMLImageElement, dataUrl: string): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    img.onload = () => resolve();
+    img.onerror = () => reject(new Error("LOT chart <img> load failed"));
+    img.src = dataUrl;
+    if (img.complete && img.naturalWidth > 0) {
+      queueMicrotask(() => resolve());
+    }
+  });
+  if (typeof img.decode === "function") {
+    try {
+      await img.decode();
+    } catch {
+      /* ignore */
+    }
+  }
+  await new Promise<void>((r) => requestAnimationFrame(() => r()));
 }
 
 function svgElementToPngDataUrlForOnePage(
@@ -1200,6 +1270,7 @@ export default function App() {
   const resultRef = useRef<HTMLDivElement>(null);
   const weeklyDefectRef = useRef<HTMLDivElement>(null);
   const monthlyDefectRef = useRef<HTMLDivElement>(null);
+  const lotDefectRef = useRef<HTMLDivElement>(null);
   const defectAutoPatchTokenRef = useRef(0);
   const [defectAutoPatch, setDefectAutoPatch] = useState<{
     token: number;
@@ -1720,9 +1791,9 @@ export default function App() {
         { key: "assembly_cumulative", label: "조립실적 누적", align: "right" as const },
         { key: "assembly_prev_day", label: "전일 조립 실적", align: "right" as const },
         { key: "defect_prev_day_count", label: "전일불량개수", align: "right" as const },
-        { key: "defect_prev_day_ppm", label: "전일불량율(PPM)", align: "right" as const },
+        { key: "defect_prev_day_ppm", label: "전일불량율(ppm)", align: "right" as const },
         { key: "defect_cumulative_count", label: "누적불량개수", align: "right" as const },
-        { key: "defect_cumulative_ppm", label: "누적불량율(PPM)", align: "right" as const },
+        { key: "defect_cumulative_ppm", label: "누적불량율(ppm)", align: "right" as const },
         {
           key: "defect_cumulative_types",
           label: "누적불량유형",
@@ -1814,8 +1885,7 @@ export default function App() {
 
   async function downloadPdf(baseDateStr: string) {
     const target = pdfOnePageRef.current;
-    console.log("[PDF target]", target, target?.offsetWidth, target?.offsetHeight);
-    if (!target || target.offsetHeight === 0 || target.offsetWidth === 0) {
+    if (!target) {
       console.error(
         "[PDF] pdfOnePageRef가 없습니다. 페이지를 새로고침한 뒤 PDF 다운로드를 다시 시도해 주세요.",
       );
@@ -1827,6 +1897,8 @@ export default function App() {
     const contentTarget = target.querySelector("[data-pdf-capture-root]") as HTMLElement | null;
     const sizeRef = contentTarget ?? target;
     const scale = 2;
+    let bodyClone: HTMLElement | null = null;
+    let lotClone: HTMLElement | null = null;
     const html2canvasOptsForOnePage = {
       scale,
       backgroundColor: "#ffffff",
@@ -1841,6 +1913,7 @@ export default function App() {
             : (clonedElement.closest("[data-pdf-one-page-layout=\"true\"]") as HTMLElement | null) ??
               (_clonedDoc.querySelector("[data-pdf-one-page-layout=\"true\"]") as HTMLElement | null);
         if (layout) {
+          layout.classList.add("pdf-export-mode");
           layout.style.position = "absolute";
           layout.style.left = "0px";
           layout.style.top = "0px";
@@ -1851,17 +1924,6 @@ export default function App() {
           layout.style.overflow = "visible";
           layout.style.backgroundColor = "#ffffff";
           layout.removeAttribute("aria-hidden");
-          const cs = _clonedDoc.defaultView?.getComputedStyle(layout);
-          if (cs) {
-            console.log(
-              "[PDF computed]",
-              cs.position,
-              cs.left,
-              cs.zIndex,
-              cs.visibility,
-              cs.opacity,
-            );
-          }
         }
         clonedElement.style.pointerEvents = "auto";
         const allNodes = clonedElement.querySelectorAll("*");
@@ -1884,15 +1946,6 @@ export default function App() {
     };
 
     try {
-      console.log("[PDF size]", {
-        offsetWidth: sizeRef.offsetWidth,
-        offsetHeight: sizeRef.offsetHeight,
-        scrollWidth: sizeRef.scrollWidth,
-        scrollHeight: sizeRef.scrollHeight,
-        rect: sizeRef.getBoundingClientRect(),
-      });
-
-      target.classList.add("pdf-export-mode");
       if (captureWeekly) captureWeekly.classList.add("pdf-export-mode");
       if (captureMonthly) captureMonthly.classList.add("pdf-export-mode");
       setPdfCapture(true);
@@ -2004,25 +2057,60 @@ export default function App() {
         });
       }
 
-      // 렌더가 끝났지만 실제 캡처 박스가 0이면 흰 페이지가 되므로 중단
-      console.log("[PDF target]", target, target.offsetWidth, target.offsetHeight);
-      if (!target.offsetWidth || !target.offsetHeight) {
-        window.alert("PDF 캡처 대상 높이가 0입니다. 화면 렌더링 후 다시 시도해 주세요.");
+      if (sizeRef.scrollWidth < 1 || sizeRef.scrollHeight < 1) {
+        window.alert("PDF 캡처 대상 콘텐츠 크기가 0입니다. 화면 렌더링 후 다시 시도해 주세요.");
         return;
       }
 
-      console.log("[PDF][ONEPAGE] wrapper capture 시작");
-      const w = Math.max(1, sizeRef.scrollWidth);
-      const h = Math.max(1, sizeRef.scrollHeight);
-      const canvas = await html2canvas(target, {
+      bodyClone = target.cloneNode(true) as HTMLElement;
+      bodyClone.classList.add("pdf-export-mode");
+      bodyClone.removeAttribute("aria-hidden");
+      bodyClone.style.position = "fixed";
+      bodyClone.style.left = "0";
+      bodyClone.style.top = "0";
+      bodyClone.style.width = "1320px";
+      bodyClone.style.margin = "0";
+      bodyClone.style.padding = "0";
+      bodyClone.style.boxSizing = "border-box";
+      bodyClone.style.pointerEvents = "none";
+      bodyClone.style.backgroundColor = "#ffffff";
+      bodyClone.style.opacity = "1";
+      bodyClone.style.visibility = "visible";
+      bodyClone.style.overflow = "visible";
+      bodyClone.style.zIndex = "2147483646";
+      bodyClone.style.transform = "translate3d(calc(-100vw - 2400px), 0, 0)";
+      document.body.appendChild(bodyClone);
+      await new Promise<void>((r) => requestAnimationFrame(() => r()));
+      await new Promise<void>((r) => setTimeout(r, 300));
+
+      const captureOverflowTargets = bodyClone.querySelectorAll(
+        ".card, .tableWrap, .weekly-defect-chart-capture-target, [data-pdf-capture-root]",
+      );
+      captureOverflowTargets.forEach((el) => {
+        (el as HTMLElement).style.overflow = "visible";
+      });
+
+      const w = Math.max(1, bodyClone.scrollWidth);
+      const h = Math.max(1, bodyClone.scrollHeight);
+      console.log("[PDF size FIX]", {
+        scrollWidth: bodyClone.scrollWidth,
+        scrollHeight: bodyClone.scrollHeight,
+        offsetWidth: bodyClone.offsetWidth,
+        offsetHeight: bodyClone.offsetHeight,
+      });
+      console.log("[PDF clone capture]", bodyClone.offsetWidth, bodyClone.offsetHeight, {
+        scrollW: w,
+        scrollH: h,
+      });
+
+      const canvas = await html2canvas(bodyClone, {
         ...html2canvasOptsForOnePage,
         width: w,
         height: h,
         windowWidth: w,
         windowHeight: h,
       });
-      console.log("[PDF][ONEPAGE] wrapper capture 완료");
-      console.log("[PDF canvas]", canvas.width, canvas.height);
+      console.log("[PDF page1 canvas]", canvas.width, canvas.height);
       if (canvas.height < 200) {
         window.alert("PDF 캡처 높이가 비정상적으로 작습니다.");
         return;
@@ -2038,21 +2126,181 @@ export default function App() {
       const pageW = pdf.internal.pageSize.getWidth();
       const pageH = pdf.internal.pageSize.getHeight();
       const imgData = canvas.toDataURL("image/png");
-      let imgWidthMm = pageW;
-      let imgHeightMm = (canvas.height * imgWidthMm) / canvas.width;
-      if (imgHeightMm > pageH) {
-        imgHeightMm = pageH;
-        imgWidthMm = (canvas.width * imgHeightMm) / canvas.height;
+      const page1Dest = defectPpmPdfRasterDestMm(canvas.width, canvas.height, pageW, pageH);
+      const { imgWidthMm, imgHeightMm, xMm: x, yMm: y } = page1Dest;
+      console.log("[PDF place]", { pageWidth: pageW, imgWidth: imgWidthMm, x });
+      pdf.addImage(imgData, "PNG", x, y, imgWidthMm, imgHeightMm);
+
+      const lotCaptureTarget =
+        (lotDefectRef.current?.matches('[data-pdf-lot-card="true"]')
+          ? lotDefectRef.current
+          : lotDefectRef.current?.querySelector('[data-pdf-lot-card="true"]')) ??
+        (document.querySelector('[data-pdf-lot-card="true"]') as HTMLElement | null);
+      console.log("[PDF lot root]", lotDefectRef.current);
+      console.log("[PDF lot target]", lotCaptureTarget);
+      console.log("[PDF lot target html]", lotCaptureTarget?.outerHTML?.slice(0, 500));
+      if (!lotCaptureTarget) {
+        console.log("[PDF lot card missing]", {
+          lotDefectRef: lotDefectRef.current,
+          documentTarget: document.querySelector('[data-pdf-lot-card="true"]'),
+        });
+        window.alert("LOT PDF 캡처 대상을 찾지 못했습니다.");
+      } else {
+        /* Recharts SVG는 html2canvas만으로 비어 나올 수 있어 SVG→PNG 후, 클론에서 SVG를 img로 바꾼 뒤 카드 전체를 래스터 */
+        pdf.addPage("a4", "portrait");
+        const pickedLot =
+          selectLargestSvgFromRoot(lotCaptureTarget as HTMLElement) ??
+          selectLargestSvgFromRoot(lotDefectRef.current as HTMLElement | null);
+        if (!pickedLot) {
+          console.warn("[PDF page2 lot] svg 없음");
+          pdf.setFontSize(11);
+          pdf.text("LOT chart SVG not found.", 14, 20);
+        } else {
+          try {
+            const lotPng = await svgElementToPngDataUrlForOnePage(
+              pickedLot.svg,
+              pickedLot.width,
+              pickedLot.height,
+              PDF_ONE_PAGE_SVG_RASTER_SCALE,
+            );
+            lotClone = lotCaptureTarget.cloneNode(true) as HTMLElement;
+            lotClone.classList.add("pdf-export-mode");
+            /* 사용자 화면엔 보이지 않되, html2canvas가 안정적으로 레이아웃을 읽게 transform은 쓰지 않음 */
+            lotClone.style.position = "fixed";
+            lotClone.style.left = "-20000px";
+            lotClone.style.top = "0";
+            lotClone.style.width = `${PDF_ONE_PAGE_ROOT_WIDTH_PX}px`;
+            lotClone.style.minWidth = `${PDF_ONE_PAGE_ROOT_WIDTH_PX}px`;
+            lotClone.style.maxWidth = `${PDF_ONE_PAGE_ROOT_WIDTH_PX}px`;
+            lotClone.style.margin = "0";
+            lotClone.style.boxSizing = "border-box";
+            lotClone.style.backgroundColor = "#ffffff";
+            lotClone.style.visibility = "visible";
+            lotClone.style.opacity = "1";
+            lotClone.style.pointerEvents = "none";
+            lotClone.style.zIndex = "2147483646";
+            lotClone.style.transform = "none";
+            lotClone.style.overflow = "visible";
+            /* 1페이지 주입 CSS 밖이므로 styles.css와 동일 테두리용 + 래스터 시 카드 테두리 안 잘리게 */
+            lotClone.style.setProperty("padding", "10px", "important");
+            lotClone.style.setProperty("box-sizing", "border-box", "important");
+
+            /* 클론은 문서에 붙이기 전엔 레이아웃이 없어 SVG 면적이 0 → 선택 실패 → img 미주입 → html2canvas 빈 페이지 */
+            document.body.appendChild(lotClone);
+            void lotClone.offsetHeight;
+            await new Promise<void>((r) => requestAnimationFrame(() => r()));
+
+            let clonePick = selectLargestSvgFromRoot(lotClone);
+            if (!clonePick && pickedLot.index >= 0) {
+              const svgList = lotClone.querySelectorAll("svg");
+              const byIdx = svgList[pickedLot.index] as SVGSVGElement | undefined;
+              if (byIdx?.parentNode) {
+                let cw = byIdx.clientWidth;
+                let ch = byIdx.clientHeight;
+                if (cw <= 0 || ch <= 0) {
+                  const br = byIdx.getBoundingClientRect();
+                  cw = br.width;
+                  ch = br.height;
+                }
+                if (cw <= 0 || ch <= 0) {
+                  cw = pickedLot.width;
+                  ch = pickedLot.height;
+                }
+                clonePick = { svg: byIdx, index: pickedLot.index, width: cw, height: ch };
+              }
+            }
+
+            let chartImg: HTMLImageElement | null = null;
+            if (clonePick?.svg?.parentNode) {
+              const doc = lotClone.ownerDocument ?? document;
+              const img = doc.createElement("img");
+              const rw = Math.max(1, Math.round(clonePick.width || pickedLot.width));
+              const rh = Math.max(1, Math.round(clonePick.height || pickedLot.height));
+              img.setAttribute("width", String(rw));
+              img.setAttribute("height", String(rh));
+              img.style.display = "block";
+              img.style.width = "100%";
+              img.style.height = "auto";
+              img.style.maxWidth = `${rw}px`;
+              img.alt = "";
+              clonePick.svg.parentNode.replaceChild(img, clonePick.svg);
+              chartImg = img;
+            }
+
+            if (chartImg) {
+              await awaitLotPdfChartImgReady(chartImg, lotPng);
+            }
+            await new Promise<void>((r) => setTimeout(r, 100));
+            void lotClone.offsetHeight;
+
+            const lotCardHtml2canvasOpts = {
+              scale,
+              backgroundColor: "#ffffff",
+              useCORS: true,
+              allowTaint: true,
+              foreignObjectRendering: false,
+              logging: false,
+            };
+
+            const placeLotChartPngOnly = () => {
+              const pw = pickedLot.width;
+              const ph = pickedLot.height;
+              const d = defectPpmPdfRasterDestMmCappedToMaxWidth(
+                pw,
+                ph,
+                pageW,
+                pageH,
+                page1Dest.imgWidthMm,
+              );
+              pdf.addImage(lotPng, "PNG", d.xMm, d.yMm, d.imgWidthMm, d.imgHeightMm);
+            };
+
+            /* SVG→img 주입 실패 시 카드 전체 캡처는 비어 나올 수 있음 → 차트 PNG만이라도 표시 */
+            if (!chartImg) {
+              console.warn("[PDF page2 lot] chart <img> not injected — using chart PNG only");
+              placeLotChartPngOnly();
+            } else {
+            /* 고정 height는 이미지 로드 전에 잡히면 잘려 흰 캔버스가 됨 — 요소 자연 크기로 캡처 */
+            const lotCanvas = await html2canvas(lotClone, lotCardHtml2canvasOpts);
+            console.log("[PDF page2 lot card canvas]", lotCanvas.width, lotCanvas.height);
+
+            if (lotCanvas.width >= 40 && lotCanvas.height >= 40) {
+              const lotImgData = lotCanvas.toDataURL("image/png");
+              const lotD = defectPpmPdfRasterDestMmCappedToMaxWidth(
+                lotCanvas.width,
+                lotCanvas.height,
+                pageW,
+                pageH,
+                page1Dest.imgWidthMm,
+              );
+              pdf.addImage(lotImgData, "PNG", lotD.xMm, lotD.yMm, lotD.imgWidthMm, lotD.imgHeightMm);
+            } else {
+              console.warn("[PDF page2 lot] canvas too small, fallback chart png only");
+              placeLotChartPngOnly();
+            }
+            }
+          } catch (lotErr) {
+            console.error("[PDF page2 lot failed]", lotErr);
+            pdf.setFontSize(11);
+            pdf.text("LOT page export failed.", 14, 20);
+          }
+        }
       }
-      pdf.addImage(imgData, "PNG", 0, 0, imgWidthMm, imgHeightMm);
 
       savePdfFile(pdf, `생산일보_${baseDateStr}.pdf`);
-      console.log("[PDF][ONEPAGE] pdf.save 호출 완료");
     } catch (pdfErr) {
       console.error("[PDF ERROR]", pdfErr);
     } finally {
+      if (bodyClone?.parentNode) {
+        bodyClone.remove();
+      }
+      bodyClone = null;
+      if (lotClone?.parentNode) {
+        lotClone.remove();
+      }
+      lotClone = null;
+      console.log("[PDF clone removed]");
       setPdfCapture(false);
-      target.classList.remove("pdf-export-mode");
       if (captureWeekly) captureWeekly.classList.remove("pdf-export-mode");
       if (captureMonthly) captureMonthly.classList.remove("pdf-export-mode");
     }
@@ -2844,6 +3092,14 @@ export default function App() {
               ? { token: defectAutoPatch.token, rows: defectAutoPatch.monthly }
               : null
           }
+        />
+      </div>
+      <div data-pdf-exclude="chart">
+        <LotDefectPpm
+          ref={lotDefectRef}
+          pdfExportMode={pdfCapture}
+          forceFixedChartSize={pdfCapture}
+          autoReloadToken={defectAutoPatch?.token ?? null}
         />
       </div>
 

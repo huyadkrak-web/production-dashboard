@@ -145,7 +145,7 @@ function WeeklyChartManualLegend({ labels }: { labels: string[] }) {
           }}
           aria-hidden
         />
-        총 불량율(PPM)
+        총 불량율(ppm)
       </span>
     </div>
   );
@@ -305,60 +305,11 @@ const WeeklyDefectPPM = React.forwardRef<HTMLDivElement, WeeklyDefectPPMProps>(
       }
     }
 
-    function addWeekRow() {
-      const colCount = Math.max(1, defectColumnNames.length);
-      setRows((prev) => [...prev, defaultWeeklyUiRow(colCount)]);
-    }
-
-    function addDefectColumn() {
-      setDefectColumnNames((prev) => [...prev, ""]);
-      setRows((prev) => prev.map((r) => ({ ...r, defectValues: [...r.defectValues, 0] })));
-    }
-
-    function removeWeekRow(i: number) {
-      setRows((prev) => prev.filter((_, idx) => idx !== i));
-    }
-
-    function updateColumnName(colIdx: number, name: string) {
-      setDefectColumnNames((prev) => {
-        const next = [...prev];
-        next[colIdx] = name;
-        return next;
-      });
-    }
-
-    function updateRowField(i: number, field: "week" | "ao_qty", value: string | number) {
-      setRows((prev) => {
-        const next = [...prev];
-        const row = { ...next[i] };
-        if (field === "week") {
-          row.week = String(value).trim();
-        } else {
-          row.ao_qty = Math.max(0, Math.round(num(value)));
-        }
-        next[i] = row;
-        return next;
-      });
-    }
-
-    function updateDefectCell(rowIdx: number, colIdx: number, value: number) {
-      setRows((prev) => {
-        const next = [...prev];
-        const row = { ...next[rowIdx] };
-        const defectValues = [...row.defectValues];
-        defectValues[colIdx] = Math.max(0, Math.round(num(value)));
-        row.defectValues = defectValues;
-        row.defect_total = defectValues.reduce((s, v) => s + num(v), 0);
-        next[rowIdx] = row;
-        return next;
-      });
-    }
-
     const hasChart = chartData.length > 0 && chartLabels.length > 0;
 
     return (
       <section className="card" ref={ref}>
-        <h2 className="cardTitle">주차별 불량 PPM 관리</h2>
+        <h2 className="cardTitle">주차별 불량 ppm 관리</h2>
         <div
           className="actions"
           style={{
@@ -376,12 +327,6 @@ const WeeklyDefectPPM = React.forwardRef<HTMLDivElement, WeeklyDefectPPMProps>(
           <button type="button" className="button" onClick={() => void save()}>
             저장
           </button>
-          <button type="button" className="button" onClick={addWeekRow}>
-            행 추가
-          </button>
-          <button type="button" className="button" onClick={addDefectColumn}>
-            불량행 추가
-          </button>
         </div>
 
         {error ? (
@@ -395,36 +340,32 @@ const WeeklyDefectPPM = React.forwardRef<HTMLDivElement, WeeklyDefectPPMProps>(
           ref={tableCaptureRef}
           style={{
             background: "#ffffff",
-            overflow: "visible",
+            overflowX: "auto",
+            maxWidth: "100%",
+            minWidth: 0,
             minHeight: 80,
           }}
         >
-          <div className="tableWrap" style={{ overflowX: "auto", marginBottom: 16 }}>
-            <table className="table">
+          <div className="tableWrap" style={{ overflowX: "hidden", marginBottom: 16, maxWidth: "100%" }}>
+            <table className="table defect-ppm-compact-table weekly-defect-compact-table">
               <thead>
                 <tr>
                   <th>주차</th>
-                  <th style={{ textAlign: "right" }}>AO 수량</th>
-                  <th style={{ textAlign: "right" }}>불량합(개)</th>
-                  <th style={{ textAlign: "right" }}>불량율(PPM)</th>
+                  <th style={{ textAlign: "center" }}>AO 수량</th>
+                  <th style={{ textAlign: "center" }}>불량합(개)</th>
+                  <th style={{ textAlign: "center" }}>불량율(ppm)</th>
                   {defectColumnNames.map((colName, ci) => (
-                    <th key={ci} style={{ textAlign: "left", minWidth: 100 }}>
-                      <input
-                        value={colName}
-                        onChange={(e) => updateColumnName(ci, e.target.value)}
-                        placeholder="불량명"
-                        style={{ width: "100%", minWidth: 88, textAlign: "left" }}
-                      />
+                    <th key={ci} style={{ textAlign: "center", minWidth: 0 }}>
+                      {String(colName).trim() !== "" ? colName : "—"}
                     </th>
                   ))}
-                  <th></th>
                 </tr>
               </thead>
               <tbody>
                 {rows.length === 0 ? (
                   <tr>
-                    <td colSpan={defectColumnNames.length + 5} className="emptyCell">
-                      데이터가 없습니다. 불러오기 또는 행 추가를 하세요.
+                    <td colSpan={defectColumnNames.length + 4} className="emptyCell">
+                      데이터가 없습니다. 불러오기를 누르세요.
                     </td>
                   </tr>
                 ) : (
@@ -438,45 +379,23 @@ const WeeklyDefectPPM = React.forwardRef<HTMLDivElement, WeeklyDefectPPMProps>(
                           : formatPpmKr(ppmLine);
                     return (
                     <tr key={i}>
-                      <td>
-                        <input
-                          value={row.week}
-                          onChange={(e) => updateRowField(i, "week", e.target.value)}
-                          placeholder="WW03"
-                          style={{ width: 64 }}
-                        />
+                      <td style={{ fontWeight: 600 }}>{String(row.week || "")}</td>
+                      <td style={{ textAlign: "center", fontVariantNumeric: "tabular-nums" }}>
+                        {num(row.ao_qty) === 0 ? "" : num(row.ao_qty).toLocaleString("ko-KR")}
                       </td>
-                      <td style={{ textAlign: "right" }}>
-                        <input
-                          type="number"
-                          value={num(row.ao_qty) === 0 ? "" : num(row.ao_qty)}
-                          onChange={(e) => updateRowField(i, "ao_qty", num(e.target.value))}
-                          placeholder="분모"
-                          style={{ width: 80, textAlign: "right" }}
-                        />
-                      </td>
-                      <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                      <td style={{ textAlign: "center", fontVariantNumeric: "tabular-nums" }}>
                         {num(row.defect_total) === 0 ? "" : String(Math.round(num(row.defect_total)))}
                       </td>
-                      <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums", color: "#334155" }}>
+                      <td style={{ textAlign: "center", fontVariantNumeric: "tabular-nums", color: "#ef4444" }}>
                         {ppmDisplay}
                       </td>
                       {defectColumnNames.map((_, ci) => (
-                        <td key={ci} style={{ textAlign: "right" }}>
-                          <input
-                            type="number"
-                            value={num(row.defectValues[ci]) === 0 ? "" : num(row.defectValues[ci])}
-                            onChange={(e) => updateDefectCell(i, ci, num(e.target.value))}
-                            placeholder="건수"
-                            style={{ width: 56, textAlign: "right" }}
-                          />
+                        <td key={ci} style={{ textAlign: "center" }}>
+                          {num(row.defectValues[ci]) === 0
+                            ? ""
+                            : String(Math.round(num(row.defectValues[ci])))}
                         </td>
                       ))}
-                      <td>
-                        <button type="button" onClick={() => removeWeekRow(i)}>
-                          삭제
-                        </button>
-                      </td>
                     </tr>
                     );
                   })
@@ -525,7 +444,7 @@ const WeeklyDefectPPM = React.forwardRef<HTMLDivElement, WeeklyDefectPPMProps>(
                 <PdfReportIconBadge Icon={ChartColumn} title={PDF_CHART_SECTION_TITLE_WEEKLY_PPM} />
               ) : null}
               <span>
-                {pdfExportMode ? PDF_CHART_SECTION_TITLE_WEEKLY_PPM : "주차별 불량 PPM 현황"}
+                {pdfExportMode ? PDF_CHART_SECTION_TITLE_WEEKLY_PPM : "주차별 불량 ppm 현황"}
               </span>
             </div>
             <div
@@ -607,7 +526,7 @@ const WeeklyDefectPPM = React.forwardRef<HTMLDivElement, WeeklyDefectPPMProps>(
                       <Line
                         type="monotone"
                         dataKey="total_ppm"
-                        name="총 불량율(PPM)"
+                        name="총 불량율(ppm)"
                         stroke={WEEKLY_TOTAL_PPM_LINE_COLOR}
                         strokeWidth={LINE_STROKE_WIDTH}
                         dot={{ r: 4 }}
@@ -674,7 +593,7 @@ const WeeklyDefectPPM = React.forwardRef<HTMLDivElement, WeeklyDefectPPMProps>(
                         <Line
                           type="monotone"
                           dataKey="total_ppm"
-                          name="총 불량율(PPM)"
+                          name="총 불량율(ppm)"
                           stroke={WEEKLY_TOTAL_PPM_LINE_COLOR}
                           strokeWidth={LINE_STROKE_WIDTH}
                           dot={{ r: 4 }}

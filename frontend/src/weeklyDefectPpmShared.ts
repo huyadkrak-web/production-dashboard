@@ -9,6 +9,32 @@ export const DEFECT_PPM_COMPOSED_CHART_MARGIN = { top: 28, right: 14, left: 8, b
 /** 막대 스택 영역 높이(px) — 주차·월별 동일 */
 export const DEFECT_PPM_PLOT_HEIGHT = 430;
 
+/** 생산일보 PDF 1페이지: `App.tsx` `PDF_ONE_PAGE_ROOT_STYLE.width` 와 동일 */
+export const PDF_ONE_PAGE_ROOT_WIDTH_PX = 1320;
+
+/** `App.tsx` `PDF_ONE_PAGE_INNER_STYLE` 좌우(및 상하) padding px */
+export const PDF_ONE_PAGE_INNER_PADDING_PX = 8;
+
+/**
+ * 1페이지 루트 안 콘텐츠 가로(`ROOT` − inner padding×2) — 월별 `section.card`가 차지하는 폭과 동일.
+ */
+export const PDF_ONE_PAGE_CHART_CARD_INNER_WIDTH_PX =
+  PDF_ONE_PAGE_ROOT_WIDTH_PX - PDF_ONE_PAGE_INNER_PADDING_PX * 2;
+
+/**
+ * `.pdf-export-mode .card` 좌우 padding 18px×2(`styles.css`) — 카드 본문(차트) 실질 가로.
+ * 월별 1페이지 차트 플레이스홀더 내부 가로와 동일.
+ */
+export const PDF_ONE_PAGE_CARD_HORIZONTAL_PADDING_PX = 18 * 2;
+
+export const PDF_ONE_PAGE_CARD_BODY_CONTENT_WIDTH_PX =
+  PDF_ONE_PAGE_CHART_CARD_INNER_WIDTH_PX - PDF_ONE_PAGE_CARD_HORIZONTAL_PADDING_PX;
+
+/** 1150×430 기준을 다른 가로폭에 맞춰 비율 보존(1페이지 월별 img `width:100%` 스케일과 동일 비율). */
+export function defectPpmPlotHeightForWidthPx(widthPx: number): number {
+  return Math.round(DEFECT_PPM_PLOT_HEIGHT * (widthPx / DEFECT_PPM_FIXED_CHART_WIDTH));
+}
+
 export const WEEKLY_DEFECT_STACK_COLORS = [
   "#4E79A7",
   "#76B7B2",
@@ -86,7 +112,7 @@ export function buildWeeklyPdfLegendEntries(
   return [
     ...bars,
     {
-      label: "총 불량율(PPM)",
+      label: "총 불량율(ppm)",
       color: WEEKLY_TOTAL_PPM_LINE_COLOR,
       variant: "line",
     },

@@ -353,6 +353,90 @@ def compute_monthly_defect_from_shipments(
     return _aggregate_by_month(ship, defect, work)
 
 
+def compute_lot_defect_ppm_from_shipments(
+    shipments: list[dict],
+    defect_df: pd.DataFrame,
+) -> list[dict[str, Any]]:
+    """출하 LOT 기준으로 불량 건수/PPM을 집계합니다(공정 미분리)."""
+    if not shipments:
+        return []
+
+    ship = _shipments_df_from_list(shipments)
+    ship["_order"] = range(len(ship))
+    ship = ship[ship["move_date"].notna()].copy()
+    ship = ship[ship["lot_id"].ne("")].copy()
+    if ship.empty:
+        return []
+
+    ship_agg = (
+        ship.groupby("lot_id", dropna=False)
+        .agg(
+            move_date=("move_date", "min"),
+            move_qty=("move_qty", "sum"),
+            _order=("_order", "min"),
+        )
+        .reset_index()
+    )
+    ship_agg = ship_agg.sort_values(
+        by=["move_date", "_order", "lot_id"], ascending=[True, True, True]
+    )
+
+    defect = _prepare_defect_df(defect_df)
+    defect["lot_id"] = defect["lot_id"].map(
+        lambda x: str(x).strip() if pd.notna(x) else ""
+    )
+    defect = defect[defect["lot_id"].ne("")].copy()
+
+    lot_defect_map: dict[str, dict[str, float]] = {}
+    if not defect.empty:
+        g = defect.groupby(["lot_id", "defect_name"], dropna=False)["defect_qty"].sum()
+        for (lot_id, defect_name), qty in g.items():
+            lot_key = str(lot_id).strip()
+            if not lot_key:
+                continue
+            by_name = lot_defect_map.setdefault(lot_key, {})
+            label = "" if pd.isna(defect_name) else str(defect_name)
+            by_name[label] = float(qty)
+
+    out: list[dict[str, Any]] = []
+    for _, row in ship_agg.iterrows():
+        lot_id = str(row["lot_id"]).strip()
+        move_date = pd.Timestamp(row["move_date"]).strftime("%Y-%m-%d")
+        move_qty = float(pd.to_numeric(row["move_qty"], errors="coerce") or 0)
+        move_qty_out: int | float = int(move_qty) if move_qty.is_integer() else round(move_qty, 4)
+
+        by_name = lot_defect_map.get(lot_id, {})
+        defects: list[dict[str, Any]] = []
+        defect_total = 0.0
+        for name in sorted(by_name.keys(), key=lambda x: str(x)):
+            count = float(by_name[name])
+            defect_total += count
+            ppm = 0.0 if move_qty <= 0 else round((count / move_qty) * 1_000_000, 1)
+            defects.append(
+                {
+                    "name": name,
+                    "count": int(count) if count.is_integer() else round(count, 4),
+                    "ppm": ppm,
+                }
+            )
+
+        total_ppm = 0.0 if move_qty <= 0 else round((defect_total / move_qty) * 1_000_000, 1)
+        out.append(
+            {
+                "lot_id": lot_id,
+                "move_date": move_date,
+                "move_qty": move_qty_out,
+                "defect_total": int(defect_total)
+                if defect_total.is_integer()
+                else round(defect_total, 4),
+                "total_ppm": total_ppm,
+                "defects": defects,
+            }
+        )
+
+    return out
+
+
 # 간단한 테스트 (주석):
 # from app.defect.parser import parse_defect, parse_shipment
 # from pathlib import Path

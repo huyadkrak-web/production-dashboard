@@ -7,3 +7,6 @@ export const PDF_CHART_SECTION_TITLE_WEEKLY_PPM =
 
 export const PDF_CHART_SECTION_TITLE_MONTHLY_PPM =
   "월별 조립 불량율(출하 기준 ppm)";
+
+/** LOT별 조립 불량률 PDF 캡처 카드 제목(2페이지 전용) */
+export const PDF_CHART_SECTION_TITLE_LOT_PPM = "LOT별 조립 불량률(ppm)";
