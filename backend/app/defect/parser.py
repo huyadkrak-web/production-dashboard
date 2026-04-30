@@ -6,6 +6,20 @@ import io
 
 import pandas as pd
 
+# 출하(공장 받기) 엑셀: 다중 시트 시 이 이름이 있으면 우선 사용
+_SHIPMENT_SHEET_PREFERRED = "공장 받기@2"
+
+
+def _select_shipment_sheet_name(sheet_names: list[str]) -> str:
+    """시트 선택: '공장 받기@2' → 두 번째 시트 → 첫 시트."""
+    if not sheet_names:
+        raise ValueError("엑셀에 시트가 없습니다.")
+    if _SHIPMENT_SHEET_PREFERRED in sheet_names:
+        return _SHIPMENT_SHEET_PREFERRED
+    if len(sheet_names) >= 2:
+        return sheet_names[1]
+    return sheet_names[0]
+
 
 def _clean_lot(x):
     if pd.isna(x):
@@ -23,16 +37,24 @@ def _norm(x):
 def parse_shipment(file_bytes: bytes) -> pd.DataFrame:
     """공장 받기.xlsx(출하) 형식: D4 이동일자, 7행부터 C/E/I 열 데이터."""
     bio = io.BytesIO(file_bytes)
-    head = pd.read_excel(bio, header=None, nrows=4, engine="openpyxl")
+    xl = pd.ExcelFile(bio, engine="openpyxl")
+    selected_sheet_name = _select_shipment_sheet_name(list(xl.sheet_names))
+    print("shipment sheet:", selected_sheet_name)
+
+    head = pd.read_excel(
+        xl,
+        sheet_name=selected_sheet_name,
+        header=None,
+        nrows=4,
+    )
     move_date = pd.to_datetime(head.iloc[3, 3], errors="coerce")
 
-    bio.seek(0)
     df = pd.read_excel(
-        bio,
+        xl,
+        sheet_name=selected_sheet_name,
         header=None,
         skiprows=6,
         usecols=[2, 4, 8],
-        engine="openpyxl",
     )
     df.columns = ["lot_id", "product", "move_qty"]
 

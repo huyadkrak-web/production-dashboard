@@ -43,18 +43,6 @@
       {
         "name": "부풀음",
         "count": 0
-      },
-      {
-        "name": "pad 오염",
-        "count": 0
-      },
-      {
-        "name": "pcb 찢어짐",
-        "count": 0
-      },
-      {
-        "name": "단자 오염",
-        "count": 0
       }
     ]
   },
@@ -102,77 +90,6 @@
       {
         "name": "부풀음",
         "count": 2
-      },
-      {
-        "name": "pad 오염",
-        "count": 0
-      },
-      {
-        "name": "pcb 찢어짐",
-        "count": 0
-      },
-      {
-        "name": "단자 오염",
-        "count": 0
-      }
-    ]
-  },
-  {
-    "week": "WW18",
-    "ao_qty": 20983,
-    "defect_total": 37,
-    "defects": [
-      {
-        "name": "Chip Crack",
-        "count": 7
-      },
-      {
-        "name": "PKG Broken",
-        "count": 3
-      },
-      {
-        "name": "die shift",
-        "count": 0
-      },
-      {
-        "name": "pcb dent",
-        "count": 6
-      },
-      {
-        "name": "pcb scratch",
-        "count": 0
-      },
-      {
-        "name": "원자재 불량",
-        "count": 0
-      },
-      {
-        "name": "lead open",
-        "count": 0
-      },
-      {
-        "name": "pkg 낙석",
-        "count": 2
-      },
-      {
-        "name": "단자 Scratch",
-        "count": 0
-      },
-      {
-        "name": "부풀음",
-        "count": 0
-      },
-      {
-        "name": "pad 오염",
-        "count": 2
-      },
-      {
-        "name": "pcb 찢어짐",
-        "count": 16
-      },
-      {
-        "name": "단자 오염",
-        "count": 1
       }
     ]
   }
