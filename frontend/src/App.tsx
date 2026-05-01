@@ -3065,6 +3065,14 @@ export default function App() {
               monthly,
             });
           }}
+          onResetSuccess={(weekly: unknown[], monthly: unknown[]) => {
+            defectAutoPatchTokenRef.current += 1;
+            setDefectAutoPatch({
+              token: defectAutoPatchTokenRef.current,
+              weekly,
+              monthly,
+            });
+          }}
         />
         <WeeklyDefectPPM
           ref={weeklyDefectRef}

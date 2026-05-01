@@ -10,8 +10,16 @@ from .calculator import (
     compute_weekly_defect_from_shipments,
 )
 from .parser import parse_defect, parse_shipment, parse_work
-from .shipment_store import get_shipment_summary, load_shipment, save_shipment
+from .shipment_store import (
+    clear_shipment,
+    get_shipment_move_date_rollups,
+    get_shipment_summary,
+    load_shipment,
+    save_shipment,
+)
 from .storage import (
+    clear_monthly_defect_auto_storage,
+    clear_weekly_defect_auto_storage,
     load_monthly_auto,
     load_weekly_auto,
     save_monthly_auto,
@@ -20,6 +28,22 @@ from .storage import (
 
 router = APIRouter(prefix="/defect-auto", tags=["defect-auto"])
 _latest_lot_defects: list[dict] = []
+
+
+@router.post("/reset")
+def defect_auto_reset() -> dict:
+    """출하(Supabase)와 주·월 자동 집계·메모리 LOT PPM을 모두 비웁니다. 이후 출하→compute 순으로 다시 올리세요."""
+    clear_shipment()
+    clear_weekly_defect_auto_storage()
+    clear_monthly_defect_auto_storage()
+    global _latest_lot_defects
+    _latest_lot_defects = []
+    summary = get_shipment_summary()
+    return {
+        "status": "ok",
+        "message": "출하·주차별·월별 자동 집계·LOT별 PPM(서버 메모리)을 초기화했습니다.",
+        "shipment_summary": summary,
+    }
 
 
 @router.post("/shipment")
@@ -31,10 +55,13 @@ async def defect_auto_shipment(
         shipment_bytes = await shipment_file.read()
         df = parse_shipment(shipment_bytes)
         summary = save_shipment(df)
+        parse_report = df.attrs.get("shipment_parse_report")
+        dup = isinstance(summary, dict) and summary.get("duplicate_skipped") is True
         return {
             "status": "ok",
-            "message": "shipment saved",
+            "message": "shipment duplicate skipped" if dup else "shipment saved",
             "shipment_summary": summary,
+            "shipment_parse_report": parse_report,
         }
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
@@ -86,6 +113,13 @@ def defect_auto_shipment_summary() -> dict:
     """출하 누적 요약(min/max date, lot 개수, move_qty 합계)을 반환합니다."""
     summary = get_shipment_summary()
     return {"status": "ok", "shipment_summary": summary}
+
+
+@router.get("/shipment-move-dates")
+def defect_auto_shipment_move_dates() -> dict:
+    """저장된 출하의 이동일자별 행 수·수량(중복 업로드·누락 확인용)."""
+    rollups = get_shipment_move_date_rollups()
+    return {"status": "ok", "move_dates": rollups}
 
 
 @router.get("/lot-defects")

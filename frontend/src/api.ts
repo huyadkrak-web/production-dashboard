@@ -186,6 +186,8 @@ export async function uploadDefectShipment(file: File): Promise<{
   status: string;
   message: string;
   shipment_summary: DefectAutoShipmentSummary | null;
+  /** 서버 출하 파싱 진단(시트명·제외 행 등). 없을 수 있음 */
+  shipment_parse_report?: unknown;
 }> {
   const fd = new FormData();
   fd.append("shipment_file", file);
@@ -201,6 +203,7 @@ export async function uploadDefectShipment(file: File): Promise<{
     status: string;
     message: string;
     shipment_summary: DefectAutoShipmentSummary | null;
+    shipment_parse_report?: unknown;
   }>;
 }
 
@@ -215,6 +218,8 @@ export type DefectAutoShipmentSummary = {
   max_date: string;
   lot_count: number;
   total_qty: number;
+  /** 동일 출하(이동일자·LOT·제품·수량 조합)가 이미 DB에 있어 저장을 건너뜀 */
+  duplicate_skipped?: boolean;
 };
 
 export type DefectAutoLotDefectItem = {
@@ -251,6 +256,24 @@ export async function computeDefectAuto(
   return res.json() as Promise<DefectAutoComputeResponse>;
 }
 
+/** POST /defect-auto/reset — 출하·주·월 자동 집계·LOT PPM(서버 메모리) 일괄 초기화 */
+export async function postDefectAutoReset(): Promise<{
+  status: string;
+  message: string;
+  shipment_summary: DefectAutoShipmentSummary | null;
+}> {
+  const res = await fetch(`${API_BASE}/defect-auto/reset`, { method: "POST" });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(text || res.statusText);
+  }
+  return res.json() as Promise<{
+    status: string;
+    message: string;
+    shipment_summary: DefectAutoShipmentSummary | null;
+  }>;
+}
+
 /** GET /defect-auto/weekly — 저장된 주차별 자동 집계 */
 export async function getDefectAutoWeekly(): Promise<{
   status: string;
@@ -281,6 +304,25 @@ export async function getDefectAutoShipmentSummary(): Promise<{
   return res.json() as Promise<{
     status: string;
     shipment_summary: DefectAutoShipmentSummary | null;
+  }>;
+}
+
+export type DefectAutoShipmentMoveDateRow = {
+  date: string;
+  row_count: number;
+  total_qty: number;
+};
+
+/** GET /defect-auto/shipment-move-dates — 저장된 출하의 이동일자별 건수·수량(최신일 먼저) */
+export async function getDefectAutoShipmentMoveDates(): Promise<{
+  status: string;
+  move_dates: DefectAutoShipmentMoveDateRow[];
+}> {
+  const res = await fetch(`${API_BASE}/defect-auto/shipment-move-dates`);
+  if (!res.ok) throw new Error(`GET /defect-auto/shipment-move-dates failed: ${res.status}`);
+  return res.json() as Promise<{
+    status: string;
+    move_dates: DefectAutoShipmentMoveDateRow[];
   }>;
 }
 

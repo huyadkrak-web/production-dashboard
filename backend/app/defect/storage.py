@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..db import supabase_delete_where, supabase_get, supabase_insert
+from ..db import supabase_delete_all, supabase_delete_where, supabase_get, supabase_insert
 
 
 def _as_str(value: Any) -> str:
@@ -235,3 +235,17 @@ def load_monthly_auto() -> list[dict]:
     data = _inflate_monthly_rows(summary, detail)
     print("[storage] loaded monthly_defect")
     return data
+
+
+def clear_weekly_defect_auto_storage() -> None:
+    """주차별 공정불량 자동 집계(요약·상세)를 Supabase에서 전부 삭제합니다."""
+    supabase_delete_all("weekly_defect_detail")
+    supabase_delete_all("weekly_defect")
+    print("[storage] cleared weekly_defect")
+
+
+def clear_monthly_defect_auto_storage() -> None:
+    """월별 공정불량 자동 집계(요약·상세)를 Supabase에서 전부 삭제합니다."""
+    supabase_delete_all("monthly_defect_detail")
+    supabase_delete_all("monthly_defect")
+    print("[storage] cleared monthly_defect")
