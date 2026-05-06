@@ -9,7 +9,7 @@ from .calculator import (
     compute_monthly_defect_from_shipments,
     compute_weekly_defect_from_shipments,
 )
-from .parser import parse_defect, parse_shipment, parse_work
+from .parser import _clean_lot, parse_defect, parse_shipment, parse_work, print_defect_shipment_lot_match_report
 from .shipment_store import (
     clear_shipment,
     get_shipment_move_date_rollups,
@@ -78,16 +78,24 @@ async def defect_auto_compute(
     try:
         defect_bytes = await defect_file.read()
         work_bytes = await work_file.read()
-        defect_df = parse_defect(defect_bytes)
-        work_df = parse_work(work_bytes)
         shipments = load_shipment()
+        shipment_lot_ids = frozenset(
+            x
+            for s in shipments
+            if isinstance(s, dict)
+            for x in (_clean_lot(s.get("lot_id")),)
+            if x
+        )
+        defect_df = parse_defect(defect_bytes, shipment_lot_ids=shipment_lot_ids)
+        work_df = parse_work(work_bytes)
+        print_defect_shipment_lot_match_report(defect_df, shipments)
         weekly = compute_weekly_defect_from_shipments(shipments, defect_df, work_df)
         monthly = compute_monthly_defect_from_shipments(shipments, defect_df, work_df)
         global _latest_lot_defects
         _latest_lot_defects = compute_lot_defect_ppm_from_shipments(shipments, defect_df)
-        save_weekly_auto(weekly)
-        save_monthly_auto(monthly)
-        return {"status": "ok", "weekly": weekly, "monthly": monthly}
+        weekly_merged = save_weekly_auto(weekly)
+        monthly_merged = save_monthly_auto(monthly)
+        return {"status": "ok", "weekly": weekly_merged, "monthly": monthly_merged}
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
     except Exception as e:

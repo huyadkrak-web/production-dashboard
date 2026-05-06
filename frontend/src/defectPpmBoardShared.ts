@@ -730,9 +730,21 @@ export function mergeWeeklyDefectPpmData(
     return { cols: defectColumnNames, rows: existingRows };
   }
   const existingSave = toSaveWeeklyRows(existingRows, defectColumnNames);
-  const incomingKeys = new Set(incoming.map((r) => String(r.week).trim()));
+  const existingByWeek = new Map(
+    existingSave.map((r) => [String(r.week).trim(), r]),
+  );
+  /** 자동 계산 AO=0일 때 저장된 AO>0 주차는 덮어쓰지 않음 */
+  const incomingResolved = incoming.map((row) => {
+    const wk = String(row.week).trim();
+    const prev = existingByWeek.get(wk);
+    if (prev != null && num(row.ao_qty) <= 0 && num(prev.ao_qty) > 0) {
+      return prev;
+    }
+    return row;
+  });
+  const incomingKeys = new Set(incomingResolved.map((r) => String(r.week).trim()));
   const kept = existingSave.filter((r) => !incomingKeys.has(String(r.week).trim()));
-  const merged = [...kept, ...incoming];
+  const merged = [...kept, ...incomingResolved];
   const indexed = isIndexedDefectLayout(merged);
   const inf = indexed
     ? inferDefectColumnNamesIndexed(merged)
@@ -749,16 +761,29 @@ export function mergeMonthlyDefectPpmData(
   existingRows: MonthlyRowUi[],
   defectColumnNames: string[],
   incomingPpmRows: readonly MonthlyDefectPpmRow[],
+  incomingAoByLabel?: ReadonlyMap<string, number>,
 ): { cols: string[]; rows: MonthlyRowUi[] } {
   if (incomingPpmRows.length === 0) {
     return { cols: defectColumnNames, rows: existingRows };
   }
   const existingSave = toSaveMonthlyRows(existingRows, defectColumnNames);
-  const incomingKeys = new Set(
-    incomingPpmRows.map((r) => String(r.label ?? "").trim()),
+  const existingByLabel = new Map(
+    existingSave.map((r) => [String(r.label ?? "").trim(), r]),
   );
+  const incomingResolved = incomingPpmRows.map((row) => {
+    const lb = String(row.label ?? "").trim();
+    if (!incomingAoByLabel || !incomingAoByLabel.has(lb)) return row;
+    const ao = incomingAoByLabel.get(lb)!;
+    if (ao > 0) return row;
+    const prev = existingByLabel.get(lb);
+    if (!prev) return row;
+    const hadPpm =
+      num(prev.total_ppm) !== 0 || prev.defects.some((d) => num(d.value) !== 0);
+    return hadPpm ? prev : row;
+  });
+  const incomingKeys = new Set(incomingResolved.map((r) => String(r.label ?? "").trim()));
   const kept = existingSave.filter((r) => !incomingKeys.has(String(r.label).trim()));
-  const merged = sortMonthlyDefectRowsByLabel([...kept, ...incomingPpmRows]);
+  const merged = sortMonthlyDefectRowsByLabel([...kept, ...incomingResolved]);
   const inf = inferDefectColumnNamesUnion(merged);
   const finalCols = inf.length > 0 ? inf : [""];
   const ui = merged.map((r) => alignMonthlyRowToColumns(r, finalCols, false));

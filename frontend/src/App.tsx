@@ -25,6 +25,7 @@ import {
   MasterRow,
   PlanRow,
   getMaster,
+  getPlan,
   postMaster,
   ProductionProgressRow,
 } from "./api";
@@ -594,30 +595,53 @@ function svgElementToPngDataUrlForOnePage(
 function pickMonthlyPlanSourceRowsForCompute(
   hasUploadWorksheet: boolean,
   screenPlanRows: PlanRow[],
-  planMonthKey: string,
-): { planSourceRows: PlanRow[]; usingUploaded: boolean; usingSaved: boolean; usingDemo: boolean } {
+  monthKey: string,
+  serverPlanRows: PlanRow[],
+): {
+  planSourceRows: PlanRow[];
+  usingUploaded: boolean;
+  usingServerPlan: boolean;
+  usingDemo: boolean;
+} {
   if (hasUploadWorksheet) {
     return {
       planSourceRows: screenPlanRows,
       usingUploaded: true,
-      usingSaved: false,
+      usingServerPlan: false,
       usingDemo: false,
     };
   }
-  const forMonth = DEMO_PLAN_ROWS.filter((r) => r.month === planMonthKey);
-  const savedRows = forMonth.length > 0 ? forMonth : [...DEMO_PLAN_ROWS];
-  if (savedRows.length > 0) {
+  const fromScreen = screenPlanRows.filter((r) => r.month === monthKey);
+  if (fromScreen.length > 0) {
     return {
-      planSourceRows: savedRows,
+      planSourceRows: fromScreen,
       usingUploaded: false,
-      usingSaved: true,
+      usingServerPlan: false,
       usingDemo: false,
+    };
+  }
+  const fromServer = serverPlanRows.filter((r) => r.month === monthKey);
+  if (fromServer.length > 0) {
+    return {
+      planSourceRows: fromServer,
+      usingUploaded: false,
+      usingServerPlan: true,
+      usingDemo: false,
+    };
+  }
+  const forMonthDemo = DEMO_PLAN_ROWS.filter((r) => r.month === monthKey);
+  if (forMonthDemo.length > 0) {
+    return {
+      planSourceRows: forMonthDemo,
+      usingUploaded: false,
+      usingServerPlan: false,
+      usingDemo: true,
     };
   }
   return {
-    planSourceRows: [],
+    planSourceRows: [...DEMO_PLAN_ROWS],
     usingUploaded: false,
-    usingSaved: false,
+    usingServerPlan: false,
     usingDemo: true,
   };
 }
@@ -2313,16 +2337,26 @@ export default function App() {
     setError(null);
     try {
       const hasUploadWorksheet = uploadedPlanSheetWorksheet != null;
-      const { planSourceRows, usingUploaded, usingSaved, usingDemo } =
-        pickMonthlyPlanSourceRowsForCompute(hasUploadWorksheet, planRows, planMonth);
+      const planMonthKey = baseDate.length >= 7 ? baseDate.slice(0, 7) : planMonth;
+      let serverPlanRows: PlanRow[] = [];
+      if (!hasUploadWorksheet) {
+        try {
+          serverPlanRows = await getPlan(planMonthKey);
+        } catch (err) {
+          console.warn("[생산일보 계산] 저장된 월간플랜 GET 실패 — 데모·빈 플랜 경로로 진행", err);
+        }
+      }
+      const { planSourceRows, usingUploaded, usingServerPlan, usingDemo } =
+        pickMonthlyPlanSourceRowsForCompute(hasUploadWorksheet, planRows, planMonthKey, serverPlanRows);
 
       const masterForMatch =
         masterRows.length > 0 ? masterRows : (demoMaster as MasterRow[]);
       const planByCode = buildPlanByProcessCode(planSourceRows);
 
       console.log("[생산일보 계산] monthly plan source", {
+        planMonthKey,
         "using uploaded monthly plan": usingUploaded,
-        "using saved monthly plan": usingSaved,
+        "using server GET /plan rows": usingServerPlan,
         "using demo monthly plan": usingDemo,
         "final plan sample 3건": planSourceRows.slice(0, 3).map((r) => ({
           process_code: r.process_code,

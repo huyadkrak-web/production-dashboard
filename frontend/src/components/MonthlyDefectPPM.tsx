@@ -222,10 +222,19 @@ const MonthlyDefectPPM = React.forwardRef<HTMLDivElement, MonthlyDefectPPMProps>
       if (!p?.rows?.length) return;
       const inc = parseDefectApiMonthlyItems(p.rows);
       if (inc.length === 0) return;
+      const aoByLabel = new Map<string, number>();
+      for (const r of p.rows) {
+        if (!r || typeof r !== "object") continue;
+        const o = r as Record<string, unknown>;
+        const lb = String(o.month ?? o.label ?? "").trim();
+        if (!lb) continue;
+        aoByLabel.set(lb, num(o.ao_qty));
+      }
       const m = mergeMonthlyDefectPpmData(
         rowsRef.current,
         defectColsRef.current,
         inc,
+        aoByLabel,
       );
       setDefectColumnNames(m.cols);
       setRows(m.rows);
