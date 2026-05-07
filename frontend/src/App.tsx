@@ -1681,14 +1681,14 @@ export default function App() {
     const monthPlanLabel = month != null ? `${month}월 계획` : "월 계획";
     return [
       { key: "product", label: "제품" },
-      { key: "process_group", label: "공정대분류" },
+      { key: "process_group", label: "공정 대분류" },
       { key: "process_name", label: "공정명" },
       { key: "month_plan", label: monthPlanLabel, align: "right" as const },
-      { key: "prev_day_plan", label: "기준일계획", align: "right" as const },
-      { key: "cumulative_actual", label: "실적누적", align: "right" as const },
-      { key: "progress_day", label: "진척율(일)", align: "right" as const },
-      { key: "progress_month", label: "진척율(월)", align: "right" as const },
-      { key: "prev_day_actual", label: "전일실적", align: "right" as const },
+      { key: "prev_day_plan", label: "기준일 계획", align: "right" as const },
+      { key: "cumulative_actual", label: "실적 누적", align: "right" as const },
+      { key: "progress_day", label: "진척률(일)", align: "right" as const },
+      { key: "progress_month", label: "진척률(월)", align: "right" as const },
+      { key: "prev_day_actual", label: "전일 실적", align: "right" as const },
       {
         key: "remark",
         label: "특이사항",
@@ -1832,17 +1832,17 @@ export default function App() {
     () =>
       [
         { key: "product", label: "제품" },
-        { key: "process_group", label: "공정대분류" },
+        { key: "process_group", label: "공정 대분류" },
         { key: "process_name", label: "공정명" },
-        { key: "assembly_cumulative", label: "조립실적 누적", align: "right" as const },
+        { key: "assembly_cumulative", label: "조립 실적 누적", align: "right" as const },
         { key: "assembly_prev_day", label: "전일 조립 실적", align: "right" as const },
-        { key: "defect_prev_day_count", label: "전일불량개수", align: "right" as const },
-        { key: "defect_prev_day_ppm", label: "전일불량율(ppm)", align: "right" as const },
-        { key: "defect_cumulative_count", label: "누적불량개수", align: "right" as const },
-        { key: "defect_cumulative_ppm", label: "누적불량율(ppm)", align: "right" as const },
+        { key: "defect_prev_day_count", label: "전일 불량 개수", align: "right" as const },
+        { key: "defect_prev_day_ppm", label: "전일 불량률(ppm)", align: "right" as const },
+        { key: "defect_cumulative_count", label: "누적 불량 개수", align: "right" as const },
+        { key: "defect_cumulative_ppm", label: "누적 불량률(ppm)", align: "right" as const },
         {
           key: "defect_cumulative_types",
-          label: "누적불량유형",
+          label: "누적 불량 유형",
           render: (args: {
             row: AssemblyDefectRowNormalized;
             rowIndex: number;
@@ -2645,7 +2645,7 @@ export default function App() {
           </button>
         </div>
         <div className="hint" style={{ marginBottom: 8 }}>
-          제품(product), 공정코드, 공정명, 공정대분류, 조립공정, 표시순서, 사용여부
+          제품(product), 공정코드, 공정명, 공정 대분류, 조립공정, 표시순서, 사용여부
         </div>
         <div className="tableWrap" style={{ overflowX: "auto" }}>
           <table className="table">
@@ -2654,7 +2654,7 @@ export default function App() {
                 <th>제품</th>
                 <th>공정코드</th>
                 <th>공정명</th>
-                <th>공정대분류</th>
+                <th>공정 대분류</th>
                 <th>조립공정</th>
                 <th>표시순서</th>
                 <th>사용</th>
@@ -2813,7 +2813,7 @@ export default function App() {
               <tr>
                 <th>공정코드</th>
                 <th>월계획</th>
-                <th>기준일계획</th>
+                <th>기준일 계획</th>
               </tr>
             </thead>
             <tbody>

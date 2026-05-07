@@ -402,6 +402,8 @@ input.app-base-date-input[type="date"]::-webkit-calendar-picker-indicator:hover 
 .asm-defect-table th {
   padding: 10px 12px;
   vertical-align: middle;
+  font-size: 12px;
+  white-space: nowrap;
   /* DataTable th 인라인 정렬보다 우선: 생산/조립 표만 헤더 가운데 */
   text-align: center !important;
 }
@@ -433,10 +435,10 @@ input.app-base-date-input[type="date"]::-webkit-calendar-picker-indicator:hover 
   width: 8%;
 }
 .prod-progress-table th:nth-child(2) {
-  width: 7%;
+  width: 8%;
 }
 .prod-progress-table th:nth-child(3) {
-  width: 11%;
+  width: 12%;
 }
 .prod-progress-table th:nth-child(4),
 .prod-progress-table th:nth-child(5),
@@ -444,10 +446,10 @@ input.app-base-date-input[type="date"]::-webkit-calendar-picker-indicator:hover 
 .prod-progress-table th:nth-child(7),
 .prod-progress-table th:nth-child(8),
 .prod-progress-table th:nth-child(9) {
-  width: 10.5%;
+  width: 10%;
 }
 .prod-progress-table th:nth-child(10) {
-  width: 11%;
+  width: 12%;
 }
 
 /* 생산 진척 현황: 본문 텍스트 열 */
@@ -479,10 +481,10 @@ input.app-base-date-input[type="date"]::-webkit-calendar-picker-indicator:hover 
   width: 8%;
 }
 .asm-defect-table th:nth-child(2) {
-  width: 7%;
+  width: 8%;
 }
 .asm-defect-table th:nth-child(3) {
-  width: 11%;
+  width: 12%;
 }
 .asm-defect-table th:nth-child(4),
 .asm-defect-table th:nth-child(5),
@@ -490,10 +492,10 @@ input.app-base-date-input[type="date"]::-webkit-calendar-picker-indicator:hover 
 .asm-defect-table th:nth-child(7),
 .asm-defect-table th:nth-child(8),
 .asm-defect-table th:nth-child(9) {
-  width: 10.5%;
+  width: 10%;
 }
 .asm-defect-table th:last-child {
-  width: 11%;
+  width: 12%;
   min-width: 240px;
   vertical-align: middle;
 }
