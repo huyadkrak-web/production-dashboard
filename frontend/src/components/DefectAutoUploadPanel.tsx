@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import {
   computeDefectAuto,
   getDefectAutoShipmentMoveDates,
@@ -25,6 +25,26 @@ const SHIPMENT_FILE_INPUT_WRAP: CSSProperties = {
   minWidth: "9rem",
   flexShrink: 0,
 };
+
+/** move_date 일자별 rollup → YYYY-MM 단위 합산(행 수·이동수량). UI 전용. */
+function aggregateShipmentRollupsByMonth(
+  rollups: DefectAutoShipmentMoveDateRow[],
+): { ym: string; rowCount: number; totalQty: number }[] {
+  const byMonth = new Map<string, { rowCount: number; totalQty: number }>();
+  for (const r of rollups) {
+    const ds = String(r.date ?? "").trim();
+    if (!ds) continue;
+    const ym = ds.slice(0, 7);
+    if (!/^\d{4}-\d{2}$/.test(ym)) continue;
+    const cur = byMonth.get(ym) ?? { rowCount: 0, totalQty: 0 };
+    cur.rowCount += Number(r.row_count) || 0;
+    cur.totalQty += Number(r.total_qty) || 0;
+    byMonth.set(ym, cur);
+  }
+  return [...byMonth.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([ym, v]) => ({ ym, rowCount: v.rowCount, totalQty: v.totalQty }));
+}
 
 /**
  * 공정불량 자동화: 출하 업로드, compute 시 부모에 weekly/monthly 전달(표 병합).
@@ -145,6 +165,11 @@ export default function DefectAutoUploadPanel({
       setDefectAutoLoading(false);
     }
   }
+
+  const shipmentByMonth = useMemo(
+    () => aggregateShipmentRollupsByMonth(moveDateRollups),
+    [moveDateRollups],
+  );
 
   return (
     <section className="card" data-pdf-exclude="meta">
@@ -288,9 +313,32 @@ export default function DefectAutoUploadPanel({
       </div>
 
       <div className="hint" style={{ marginTop: 12, marginBottom: 0 }}>
-        {shipmentSummary
-          ? `출하 누적: ${shipmentSummary.min_date} ~ ${shipmentSummary.max_date} / Lot ${shipmentSummary.lot_count}건 / 이동수량 ${shipmentSummary.total_qty.toLocaleString("ko-KR")}`
-          : "출하 누적: 아직 업로드된 출하 데이터가 없습니다."}
+        {shipmentSummary ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <span style={{ fontWeight: 600 }}>출하 누적</span>
+            {shipmentByMonth.length > 0 ? (
+              <ul style={{ margin: "0 0 0 1rem", padding: 0, listStylePosition: "outside" }}>
+                {shipmentByMonth.map(({ ym, rowCount, totalQty }) => (
+                  <li key={ym} style={{ marginBottom: 2 }}>
+                    {ym}: Lot {rowCount.toLocaleString("ko-KR")}건 / 이동수량{" "}
+                    {totalQty.toLocaleString("ko-KR")}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <span style={{ color: "var(--muted, #64748b)" }}>
+                월별 요약은 이동일자 요약(`/shipment-move-dates`) 데이터가 있을 때 표시됩니다.
+              </span>
+            )}
+            <span>
+              전체: {shipmentSummary.min_date} ~ {shipmentSummary.max_date} / Lot{" "}
+              {shipmentSummary.lot_count.toLocaleString("ko-KR")}건 / 이동수량{" "}
+              {shipmentSummary.total_qty.toLocaleString("ko-KR")}
+            </span>
+          </div>
+        ) : (
+          "출하 누적: 아직 업로드된 출하 데이터가 없습니다."
+        )}
       </div>
 
       {defectAutoMessage ? (
