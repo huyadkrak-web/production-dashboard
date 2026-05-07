@@ -36,6 +36,45 @@ function cleanLot(v: unknown): string {
   return s;
 }
 
+function pad2(n: number): string {
+  return n < 10 ? `0${n}` : `${n}`;
+}
+
+/** 생산일보 기준 월(MDT): YYYY-MM-01 .. base_date (포함) — backend compute_tables와 동일 개념 */
+export function productionMonthInclusiveRange(baseDateIso: string): { start: string; end: string } {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(baseDateIso.trim());
+  if (!m) throw new Error(`baseDate은 YYYY-MM-DD 형식이어야 합니다: ${baseDateIso}`);
+  const y = m[1];
+  const mo = m[2];
+  return { start: `${y}-${mo}-01`, end: `${y}-${mo}-${m[3]}` };
+}
+
+function ymdBetween(ymd: string | null, start: string, end: string): boolean {
+  if (!ymd || ymd.length < 10) return false;
+  const d = ymd.slice(0, 10);
+  return d >= start && d <= end;
+}
+
+/** 엑셀 일련번호·문자열 → YYYY-MM-DD (비교만 용도) */
+function cellToYmd(cell: unknown): string | null {
+  if (cell == null || cell === "") return null;
+  if (typeof cell === "number" && Number.isFinite(cell)) {
+    const epochMs = Date.UTC(1899, 11, 30) + Math.floor(cell) * 86400_000;
+    const dt = new Date(epochMs);
+    if (Number.isNaN(dt.getTime())) return null;
+    return `${dt.getUTCFullYear()}-${pad2(dt.getUTCMonth() + 1)}-${pad2(dt.getUTCDate())}`;
+  }
+  const s = String(cell).trim();
+  if (!s || s.toLowerCase() === "nan") return null;
+  const m = /^\s*(\d{4})[\\/\-](\d{1,2})[\\/\-](\d{1,2})/.exec(s);
+  if (!m) return null;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const dd = Number(m[3]);
+  if (!Number.isFinite(y + mo + dd)) return null;
+  return `${y}-${pad2(mo)}-${pad2(dd)}`;
+}
+
 function normalizeDefectKey(name: unknown): string {
   if (name == null || String(name).trim() === "") return "기타";
   return String(name).trim().toLowerCase();
@@ -114,6 +153,7 @@ function readWorkRows(matrix: unknown[][], headerRowIdx: number): WorkParsedRow[
   const prodMainIdx = idx(WORK_COL_PRODUCT);
   const prodAlt1 = headerCellIndex(headerRow, (lab) => normCell(lab) === normCell("품목명"));
   const prodAlt2 = headerCellIndex(headerRow, (lab) => normCell(lab) === normCell("품목ID"));
+  const dateIdx = idx(WORK_COL_DATE);
 
   if (lotIdx < 0 || procIdx < 0) {
     throw new Error("작업일보에서 Lot ID 또는 공정ID 열을 찾지 못했습니다.");
@@ -134,12 +174,21 @@ function readWorkRows(matrix: unknown[][], headerRowIdx: number): WorkParsedRow[
     if (!product && prodAlt1 >= 0) product = String(row[prodAlt1] ?? "").trim();
     if (!product && prodAlt2 >= 0) product = String(row[prodAlt2] ?? "").trim();
 
-    out.push({ lot_id, process_code, product });
+    const rawDate = dateIdx >= 0 ? row[dateIdx] : "";
+    const work_end_iso = cellToYmd(rawDate);
+
+    out.push({ lot_id, process_code, product, work_end_iso });
   }
   return out;
 }
 
-type WorkParsedRow = { lot_id: string; process_code: string; product: string };
+type WorkParsedRow = {
+  lot_id: string;
+  process_code: string;
+  product: string;
+  /** 작업종료일자 파싱(없거나 실패 시 null) — 누적불량유형 월 필터에만 사용 */
+  work_end_iso: string | null;
+};
 
 function resolveProductColumn(workRows: WorkParsedRow[]): void {
   const byLot = new Map<string, string>();
@@ -168,6 +217,8 @@ type DefectParsedRow = {
   defect_qty: number;
   defect_name_raw: string;
   item_product: string;
+  /** 발생일자 계열 컬럼이 있으면 YYYY-MM-DD, 없거나 파싱 실패 시 null */
+  occurrence_iso: string | null;
 };
 
 function readDefectRows(matrix: unknown[][], headerRowIdx: number): DefectParsedRow[] {
@@ -187,6 +238,11 @@ function readDefectRows(matrix: unknown[][], headerRowIdx: number): DefectParsed
   const procCol = col((lab) => normCell(lab) === normCell("공정ID"));
   const itemNameCol = col((lab) => lab === "품목명");
   const itemIdCol = col((lab) => lab === "품목ID");
+  let occurrenceColIdx = col((lab) => normCell(lab) === normCell("발생일자"));
+  if (occurrenceColIdx < 0)
+    occurrenceColIdx = col((lab) => normCell(lab) === normCell("발생일"));
+  if (occurrenceColIdx < 0)
+    occurrenceColIdx = col((lab) => normCell(lab) === normCell("불량발생일"));
 
   if (lotCol < 0 || qtyCol < 0 || nameCol < 0) {
     throw new Error("코드별 불량현황에서 부모 LOTID·불량수량·불량명 열을 찾지 못했습니다.");
@@ -208,15 +264,30 @@ function readDefectRows(matrix: unknown[][], headerRowIdx: number): DefectParsed
 
     if (!lot_id) continue;
 
+    const occRaw = occurrenceColIdx >= 0 ? row[occurrenceColIdx] : undefined;
+    const occurrence_iso = cellToYmd(occRaw);
+
     out.push({
       lot_id,
       process_code,
       defect_qty,
       defect_name_raw,
       item_product,
+      occurrence_iso,
     });
   }
   return out;
+}
+
+function defectCountsTowardProductionMonth(
+  d: DefectParsedRow,
+  workHitSameLot: WorkParsedRow[],
+  bounds: { start: string; end: string },
+): boolean {
+  if (d.occurrence_iso != null && d.occurrence_iso !== "") {
+    return ymdBetween(d.occurrence_iso, bounds.start, bounds.end);
+  }
+  return workHitSameLot.some((w) => ymdBetween(w.work_end_iso, bounds.start, bounds.end));
 }
 
 function buildMasterCodeToGroup(masterRows: MasterRow[]): Map<string, string> {
@@ -313,6 +384,11 @@ export function buildCumulativeDefectSummaryRows(p: BuildCumulativeDefectParams)
 
   const codeToGroup = buildMasterCodeToGroup(p.masterRows);
 
+  const bounds = productionMonthInclusiveRange(p.baseDate);
+
+  let cumulative_defect_before_month_filter = 0;
+  let cumulative_defect_after_month_filter = 0;
+
   type AggKey = string;
   const bucket = new Map<AggKey, Map<string, { qty: number; display: string }>>();
 
@@ -324,6 +400,10 @@ export function buildCumulativeDefectSummaryRows(p: BuildCumulativeDefectParams)
   for (const d of defectRows) {
     const workHit = workRows.filter((w) => w.lot_id === d.lot_id);
     if (workHit.length === 0) continue;
+
+    cumulative_defect_before_month_filter += 1;
+    if (!defectCountsTowardProductionMonth(d, workHit, bounds)) continue;
+    cumulative_defect_after_month_filter += 1;
 
     let processCode = d.process_code;
     if (!processCode) {
@@ -360,6 +440,20 @@ export function buildCumulativeDefectSummaryRows(p: BuildCumulativeDefectParams)
       inner.set(lowerKey, { qty: addQty, display });
     }
   }
+
+  console.info("[cum_type_trace] process=buildCumulativeDefectSummaryRows");
+  console.info(
+    `[cum_type_trace] cumulative_defect_month_start=${bounds.start} cumulative_defect_base_date=${bounds.end}`,
+  );
+  console.info(
+    `[cum_type_trace] cumulative_defect_before_month_filter=${cumulative_defect_before_month_filter}`,
+  );
+  console.info(
+    `[cum_type_trace] cumulative_defect_after_month_filter=${cumulative_defect_after_month_filter}`,
+  );
+  console.info(
+    `[cum_type_trace] response_field_key=defectRows[].defect_summary → UI buildAsmRowsWithManualSummary merges into 조립공정불량.defect_cumulative_types`,
+  );
 
   const summaryByGroup = new Map<string, string>();
   for (const [aggKey, inner] of bucket) {

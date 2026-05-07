@@ -28,6 +28,7 @@ from .storage import (
 
 router = APIRouter(prefix="/defect-auto", tags=["defect-auto"])
 _latest_lot_defects: list[dict] = []
+_latest_lot_warning: str = ""
 
 
 @router.post("/reset")
@@ -36,8 +37,9 @@ def defect_auto_reset() -> dict:
     clear_shipment()
     clear_weekly_defect_auto_storage()
     clear_monthly_defect_auto_storage()
-    global _latest_lot_defects
+    global _latest_lot_defects, _latest_lot_warning
     _latest_lot_defects = []
+    _latest_lot_warning = ""
     summary = get_shipment_summary()
     return {
         "status": "ok",
@@ -89,13 +91,129 @@ async def defect_auto_compute(
         defect_df = parse_defect(defect_bytes, shipment_lot_ids=shipment_lot_ids)
         work_df = parse_work(work_bytes)
         print_defect_shipment_lot_match_report(defect_df, shipments)
-        weekly = compute_weekly_defect_from_shipments(shipments, defect_df, work_df)
-        monthly = compute_monthly_defect_from_shipments(shipments, defect_df, work_df)
-        global _latest_lot_defects
-        _latest_lot_defects = compute_lot_defect_ppm_from_shipments(shipments, defect_df)
+        shipment_lots = sorted(
+            {
+                _clean_lot(s.get("lot_id"))
+                for s in shipments
+                if isinstance(s, dict) and _clean_lot(s.get("lot_id"))
+            }
+        )
+        defect_lots = sorted(
+            {
+                _clean_lot(x)
+                for x in defect_df.get("lot_id", [])
+                if _clean_lot(x)
+            }
+        )
+        matched_lot_set = set(shipment_lots) & set(defect_lots)
+        matched_defect_rows_total = 0
+        if "lot_id" in defect_df.columns:
+            matched_defect_rows_total = int(
+                defect_df["lot_id"].astype(str).isin(matched_lot_set).sum()
+            )
+        print(f"[defect_input_compare] shipment_lot_count={len(shipment_lots)}")
+        print(f"[defect_input_compare] defect_lot_count={len(defect_lots)}")
+        print(f"[defect_input_compare] matched_defect_rows_total={matched_defect_rows_total}")
+        print(f"[defect_input_compare] shipment_lot_sample={shipment_lots[:10]}")
+        print(f"[defect_input_compare] defect_lot_sample={defect_lots[:10]}")
+        def _df_columns(df):
+            return [str(c) for c in df.columns.tolist()]
+
+        def _df_row_count(df):
+            return int(len(df))
+
+        def _sample_lot_ids(df):
+            if "lot_id" not in df.columns:
+                return []
+            return df["lot_id"].astype(str).head(10).tolist()
+
+        def _sample_defect_qty(df):
+            if "defect_qty" not in df.columns:
+                return []
+            qty = __import__("pandas").to_numeric(df["defect_qty"], errors="coerce").fillna(0)
+            return qty.head(10).tolist()
+
+        # 호출부 검증: weekly/monthly/lot에 동일한 파싱 결과(복사본)를 전달
+        defect_df_weekly = defect_df.copy(deep=True)
+        defect_df_monthly = defect_df.copy(deep=True)
+        defect_df_lot = defect_df.copy(deep=True)
+
+        print(
+            f"[defect_input_compare] target=weekly rows={_df_row_count(defect_df_weekly)} "
+            f"columns={_df_columns(defect_df_weekly)}"
+        )
+        print(
+            f"[defect_input_compare] target=monthly rows={_df_row_count(defect_df_monthly)} "
+            f"columns={_df_columns(defect_df_monthly)}"
+        )
+        print(
+            f"[defect_input_compare] target=lot rows={_df_row_count(defect_df_lot)} "
+            f"columns={_df_columns(defect_df_lot)}"
+        )
+        print(
+            f"[defect_input_compare] target=lot sample_lot_ids={_sample_lot_ids(defect_df_lot)}"
+        )
+        print(
+            f"[defect_input_compare] target=lot sample_defect_qty={_sample_defect_qty(defect_df_lot)}"
+        )
+
+        print("[defect_input_compare] compute_call_order=weekly->monthly->lot")
+        weekly = compute_weekly_defect_from_shipments(shipments, defect_df_weekly, work_df)
+        monthly = compute_monthly_defect_from_shipments(shipments, defect_df_monthly, work_df)
+        global _latest_lot_defects, _latest_lot_warning
+        lot_candidate = compute_lot_defect_ppm_from_shipments(shipments, defect_df_lot)
+        nonzero_lot_count = 0
+        for row in lot_candidate:
+            if not isinstance(row, dict):
+                continue
+            dt = row.get("defect_total", 0)
+            try:
+                if float(dt) > 0:
+                    nonzero_lot_count += 1
+            except (TypeError, ValueError):
+                pass
+
+        stale_lot_aggregate = matched_defect_rows_total == 0 or nonzero_lot_count == 0
+        keep_previous_lot_defects = stale_lot_aggregate
+        saved_candidate_rows = 0 if keep_previous_lot_defects else len(lot_candidate)
+
+        lot_warning = ""
+        if stale_lot_aggregate:
+            lot_warning = "현재 불량파일의 LOT와 출하 LOT가 일치하지 않아 LOT별 불량률은 0으로 표시됩니다."
+            print(f"[defect_input_compare] lot_warning={lot_warning}")
+            print(
+                "[defect_input_compare] keep_previous_lot_defects=true "
+                f"previous_rows={len(_latest_lot_defects)} candidate_rows_skipped={len(lot_candidate)} "
+                f"matched_defect_rows_total={matched_defect_rows_total} nonzero_lot_count={nonzero_lot_count}"
+            )
+            print(
+                f"[defect_input_compare] saved_candidate_rows=0 stale_lot_aggregate={stale_lot_aggregate}"
+            )
+            # 교집합 0 또는 LOT별 집계가 전부 0이면 0짜리 후보를 메모리/UI에 반영하지 않음
+        else:
+            _latest_lot_defects = lot_candidate
+            print(
+                "[defect_input_compare] keep_previous_lot_defects=false "
+                f"saved_candidate_rows={saved_candidate_rows} "
+                f"matched_defect_rows_total={matched_defect_rows_total} nonzero_lot_count={nonzero_lot_count}"
+            )
+        _latest_lot_warning = lot_warning
         weekly_merged = save_weekly_auto(weekly)
         monthly_merged = save_monthly_auto(monthly)
-        return {"status": "ok", "weekly": weekly_merged, "monthly": monthly_merged}
+        return {
+            "status": "ok",
+            "weekly": weekly_merged,
+            "monthly": monthly_merged,
+            "lot_warning": _latest_lot_warning,
+            "lot_aggregate_debug": {
+                "matched_defect_rows_total": matched_defect_rows_total,
+                "nonzero_lot_count": nonzero_lot_count,
+                "keep_previous_lot_defects": keep_previous_lot_defects,
+                "saved_candidate_rows": saved_candidate_rows,
+                "candidate_rows_evaluated": len(lot_candidate),
+                "preserved_previous_rows": len(_latest_lot_defects),
+            },
+        }
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
     except Exception as e:
@@ -133,4 +251,8 @@ def defect_auto_shipment_move_dates() -> dict:
 @router.get("/lot-defects")
 def defect_auto_lot_defects() -> dict:
     """최근 자동계산 기준 LOT별 조립 불량율(PPM) 집계를 반환합니다."""
-    return {"status": "ok", "lot_defects": _latest_lot_defects}
+    return {
+        "status": "ok",
+        "lot_defects": _latest_lot_defects,
+        "warning": _latest_lot_warning,
+    }

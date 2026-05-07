@@ -1335,9 +1335,102 @@ def compute_lot_defect_ppm_from_shipments(
     shipments: list[dict],
     defect_df: pd.DataFrame,
 ) -> list[dict[str, Any]]:
-    """출하 LOT 기준으로 불량 건수/PPM을 집계합니다(공정 미분리)."""
+    """출하 LOT 기준으로 불량 건수/PPM을 집계합니다(공정 미분리).
+
+    출하 ``lot_id``는 코드별 불량현황의 **부모 LOTID**(생산 추적 단위)와 맞춥니다.
+    불량 발생 후 새로 채번된 LOT ID 컬럼과 직접 비교하지 않습니다.
+    """
     if not shipments:
         return []
+
+    def _hdr_norm(cell: Any) -> str:
+        if cell is None or (isinstance(cell, float) and pd.isna(cell)):
+            return ""
+        return (
+            str(cell)
+            .strip()
+            .replace(" ", "")
+            .replace("\n", "")
+            .replace("\u3000", "")
+            .upper()
+        )
+
+    def _find_shipment_anchor_column(columns: list[Any]) -> str | None:
+        """파서가 부모열을 따로 두었을 때(전달 DF에 존재할 때만). 원본 열 문자열 반환."""
+        normed: list[tuple[str, str]] = []
+        seen: set[str] = set()
+        for c in columns:
+            lbl = "" if c is None else str(c).strip()
+            if not lbl or lbl in seen:
+                continue
+            seen.add(lbl)
+            normed.append((_hdr_norm(lbl), lbl))
+
+        priority_exact = (
+            "부모LOTID",
+            "부모LOT",
+            "PARENTLOTID",
+            "PARENTLOTNO",
+            "PARENTLOT",
+            "PARENT_LOT_ID",
+            "SOURCELOTID",
+            "SOURCELOT",
+            "SOURCE_LOT_ID",
+            "ORIGINALLOTID",
+            "SHIPMENTLOTID",
+            "출하LOTID",
+            "출하LOT",
+        )
+        for key in priority_exact:
+            for hn, orig in normed:
+                if hn == key:
+                    return orig
+        for hn, orig in normed:
+            if "부모" in hn and "LOT" in hn:
+                return orig
+        for hn, orig in normed:
+            if hn.startswith("PARENT") and "LOT" in hn:
+                return orig
+            if hn.startswith("SOURCE") and "LOT" in hn:
+                return orig
+        return None
+
+    def _parse_attrs_say_lot_id_is_parent(df: pd.DataFrame) -> tuple[bool, str]:
+        """parse_defect가 ``lot_id``에 넣은 원본 헤더가 부모 LOT(출하 단위)일 때만 True.
+
+        ``fallback_parent_lotid_all_zero_intersection``처럼 사유만 보고 단정하면,
+        부모 열이 없을 때 첫 LOT(자식) 열이 잡혀 오탐이 날 수 있어 헤더 문자열만 본다.
+        """
+        rep = df.attrs.get("defect_lot_parse_report")
+        if not isinstance(rep, dict):
+            return False, ""
+        sel = (
+            rep.get("selected_defect_lot_column")
+            or rep.get("lot_id_source_column_name")
+            or ""
+        )
+        sel_s = str(sel).strip()
+        sn = _hdr_norm(sel_s)
+        if sn == "부모LOTID":
+            return True, sel_s or "부모LOTID"
+        if "부모" in sel_s and "LOT" in sel_s.upper():
+            return True, sel_s
+        if "PARENT" in sn and "LOT" in sn:
+            return True, sel_s
+        return False, sel_s or "unknown"
+
+    def _shipment_anchor_and_key(raw: pd.DataFrame) -> tuple[pd.Series, str]:
+        col = _find_shipment_anchor_column(list(raw.columns))
+        if col and col in raw.columns:
+            return raw[col].map(_clean_lot), f"column:{col}"
+
+        attrs_ok, why = _parse_attrs_say_lot_id_is_parent(raw)
+        if attrs_ok and "lot_id" in raw.columns:
+            return raw["lot_id"].map(_clean_lot), f"attrs:lot_column_is_parent[{why}]"
+
+        return pd.Series("", index=raw.index, dtype=str), (
+            "none:need_parent_column_or_parse_attrs_parent_selection"
+        )
 
     ship = _shipments_df_from_list(shipments)
     ship["_order"] = range(len(ship))
@@ -1359,43 +1452,238 @@ def compute_lot_defect_ppm_from_shipments(
         by=["move_date", "_order", "lot_id"], ascending=[True, True, True]
     )
 
+    anchor_raw, match_key_meta = _shipment_anchor_and_key(defect_df)
     defect = _prepare_defect_df(defect_df)
-    defect = defect[defect["lot_id"].ne("")].copy()
+    defect["defect_qty"] = pd.to_numeric(defect["defect_qty"], errors="coerce").fillna(0)
+    shipment_anchor = anchor_raw.map(_clean_lot)
+    defect["_shipment_anchor"] = shipment_anchor.reindex(defect.index).fillna("")
+    shipment_anchor_series = defect["_shipment_anchor"]
 
-    lot_defect_map: dict[str, dict[str, float]] = {}
-    if not defect.empty:
-        g = defect.groupby(["lot_id", "defect_name"], dropna=False)["defect_qty"].sum()
-        for (lot_id, defect_name), qty in g.items():
-            lot_key = str(lot_id).strip()
-            if not lot_key:
-                continue
-            by_name = lot_defect_map.setdefault(lot_key, {})
-            label = "" if pd.isna(defect_name) else str(defect_name)
-            by_name[label] = float(qty)
+    lot_ids = [_clean_lot(x) for x in ship_agg["lot_id"].astype(str).tolist()]
+    ship_lot_set = {x for x in lot_ids if x}
+
+    rep = defect_df.attrs.get("defect_lot_parse_report")
+    rep_dict = rep if isinstance(rep, dict) else {}
+    stats = rep_dict.get("lot_column_candidate_stats")
+    cand_list: list[dict[str, Any]] = stats if isinstance(stats, list) else []
+    selected_src = str(rep_dict.get("selected_defect_lot_column", "") or "")
+    sel_reason = str(rep_dict.get("selection_reason", "") or "")
+
+    shipment_lot_count = len(ship_lot_set)
+    defect_l_uniq = {_clean_lot(x) for x in defect["lot_id"].tolist() if _clean_lot(x)}
+    defect_lot_count = len(defect_l_uniq)
+    intersect_l_parse_lot = defect_l_uniq & ship_lot_set
+    matched_lot_count_direct = len(intersect_l_parse_lot)
+    matched_defect_rows_direct = int(defect["lot_id"].isin(ship_lot_set).sum())
+
+    parent_header_intersects: dict[str, int] = {}
+    parent_col_samples_merged: list[str] = []
+    for row in cand_list:
+        cn = row.get("column_name")
+        if cn is None:
+            continue
+        cns = str(cn).strip()
+        hn = _hdr_norm(cns)
+        inter = row.get("intersection_count_with_shipment")
+        try:
+            n = int(inter) if inter is not None else 0
+        except (TypeError, ValueError):
+            n = 0
+        if hn == "부모LOTID" or ("부모" in cns and "LOT" in cns.upper()):
+            parent_header_intersects[cns] = n
+            samp = row.get("sample_10") or []
+            if isinstance(samp, list):
+                parent_col_samples_merged.extend(str(x) for x in samp)
+        elif "PARENT" in hn and "LOT" in hn:
+            parent_header_intersects[cns] = n
+            samp = row.get("sample_10") or []
+            if isinstance(samp, list):
+                parent_col_samples_merged.extend(str(x) for x in samp)
+
+    merged_parent_unique_intersect = (
+        max(parent_header_intersects.values())
+        if parent_header_intersects
+        else None
+    )
+
+    intersect_shipment_vs_parent_sample_values = ship_lot_set.intersection(
+        {_clean_lot(x) for x in parent_col_samples_merged},
+    )
+
+    shipment_sample_20 = sorted(ship_lot_set)[:20]
+    defect_lot_sample_20 = sorted(defect_l_uniq)[:20]
+    defect_parent_sample_20 = sorted(
+        {_clean_lot(x) for x in parent_col_samples_merged if _clean_lot(x)},
+    )[:20]
+
+    cand_json = []
+    for row in cand_list:
+        if isinstance(row, dict):
+            cand_json.append(
+                {
+                    "column_name": row.get("column_name"),
+                    "intersection_count_with_shipment": row.get(
+                        "intersection_count_with_shipment"
+                    ),
+                    "sample": row.get("sample_10"),
+                },
+            )
+
+    print(
+        "[lot_diag_compare] "
+        + json.dumps(
+            {
+                "note": (
+                    "parse_defect는 DF에 선택된 LOT열만 lot_id로 남김. "
+                    "부모열 샘플/교집합은 원본 헤더가 attrs.lot_column_candidate_stats에 저장된 분만 반영됨."
+                ),
+                "weekly_monthly_match_basis": (
+                    "defect_prepared.lot_id (parse가 선택한 열→lot_id) vs 출하 lot_id, "
+                    "occurrence_date로 주/월 버킷필터(별도)."
+                ),
+                "lot_chart_current_shipment_anchor": match_key_meta,
+                "defect_columns_in_payload": list(defect_df.columns),
+                "attrs_selected_defect_lot_column": selected_src or None,
+                "attrs_selection_reason": sel_reason or None,
+                "_clean_lot_on_defect_lot_ids": True,
+                "effect_router_storage_antioverwrite_note": (
+                    "/defect-auto/compute 라우터의 matched_rows_total==0일 때 "
+                    "_latest_lot_defects 덮어쓰기 생략은 이 함수 바깥(저장 레이어)."
+                ),
+            },
+            ensure_ascii=False,
+            default=str,
+        ),
+    )
+    print(
+        "[lot_diag_compare] summary_counts="
+        + json.dumps(
+            {
+                "shipment_lot_count": shipment_lot_count,
+                "defect_lot_count": defect_lot_count,
+                "matched_lot_count_parse_selected_lot_vs_ship": matched_lot_count_direct,
+                "matched_defect_rows_parse_selected_lot_vs_ship": matched_defect_rows_direct,
+                "matched_unique_lots_parent_headers_parser_metric": merged_parent_unique_intersect,
+                "overlap_ship_vs_cleaned_parent_candidate_samples_unique_count": (
+                    len(intersect_shipment_vs_parent_sample_values)
+                ),
+                "sample_overlap_sorted_20max": sorted(intersect_shipment_vs_parent_sample_values)[
+                    :20
+                ],
+                "parent_candidate_header_keys": sorted(parent_header_intersects.keys()),
+            },
+            ensure_ascii=False,
+            default=str,
+        ),
+    )
+    print(
+        "[lot_diag_compare] lot_column_candidates_vs_shipment="
+        + json.dumps(cand_json, ensure_ascii=False, default=str),
+    )
+    print(f"[lot_diag_compare] shipment_lot_sample_20={shipment_sample_20}")
+    print(f"[lot_diag_compare] defect_lot_id_sample_20_from_df_lot_id={defect_lot_sample_20}")
+    print(
+        "[lot_diag_compare] defect_parent_lot_samples_from_candidate_stats="
+        + str(defect_parent_sample_20),
+    )
+    print(
+        "[lot_diag_compare] intersection_parse_lot_set_vs_shipment="
+        + json.dumps(
+            {
+                "unique_lot_intersection_size": matched_lot_count_direct,
+                "parse_report_intersection_after_selection_uniques": rep_dict.get(
+                    "intersection_count_after_selection"
+                ),
+                "sample_intersection_sorted_20max": sorted(intersect_l_parse_lot)[:20],
+            },
+            ensure_ascii=False,
+            default=str,
+        ),
+    )
+    print(
+        "[lot_diag_compare] intersection_parent_candidates_vs_ship="
+        + json.dumps(
+            parent_header_intersects,
+            ensure_ascii=False,
+            default=str,
+        ),
+    )
+
+    match_mask = shipment_anchor_series.ne("") & shipment_anchor_series.isin(ship_lot_set)
+    defect_matched_all = defect.loc[match_mask]
+    matched_rows_total = int(match_mask.sum())
+    anch_u = {_clean_lot(x) for x in defect.loc[match_mask, "_shipment_anchor"].tolist()}
+    anch_u.discard("")
+    matched_lot_anchor_nonzero_unique = len(anch_u)
+
+    print(
+        "[lot_diag_compare] current_shipment_anchor_match_result="
+        + json.dumps(
+            {
+                "match_key_used": match_key_meta,
+                "matched_defect_rows_total": matched_rows_total,
+                "matched_defect_shipment_anchor_lot_unique": matched_lot_anchor_nonzero_unique,
+                "explain_if_zeros": (
+                    "Lot차트 매칭이 parse lot_id 또는 별도 부모열 미전달 등으로 빈 문자열일 수 있음. "
+                    "위 summary_counts.direct_*와 교차 확인."
+                ),
+            },
+            ensure_ascii=False,
+            default=str,
+        ),
+    )
+
+    ship_sample = sorted(ship_lot_set)[:10]
+    uniq_anchor = {_clean_lot(v) for v in shipment_anchor_series.tolist()}
+    uniq_anchor.discard("")
+    defect_parent_sample = sorted(uniq_anchor)[:10]
+
+    print(
+        f"[lot_parent_match] defect_columns={list(defect_df.columns)}"
+    )
+    print(f"[lot_parent_match] match_key={match_key_meta}")
+    print(f"[lot_parent_match] shipment_lot_sample={ship_sample}")
+    print(
+        f"[lot_parent_match] defect_parent_lot_sample={defect_parent_sample}"
+    )
+    print(f"[lot_parent_match] matched_rows_total={matched_rows_total}")
 
     out: list[dict[str, Any]] = []
+    nonzero_lot_count = 0
     for _, row in ship_agg.iterrows():
         lot_id = _clean_lot(row["lot_id"])
         move_date = pd.Timestamp(row["move_date"]).strftime("%Y-%m-%d")
         move_qty = float(pd.to_numeric(row["move_qty"], errors="coerce") or 0)
         move_qty_out: int | float = int(move_qty) if move_qty.is_integer() else round(move_qty, 4)
 
-        by_name = lot_defect_map.get(lot_id, {})
+        d_lot = defect_matched_all[
+            defect_matched_all["_shipment_anchor"] == lot_id
+        ]
+        by_name_series = d_lot.groupby("defect_name", dropna=False)["defect_qty"].sum()
         defects: list[dict[str, Any]] = []
         defect_total = 0.0
-        for name in sorted(by_name.keys(), key=lambda x: str(x)):
-            count = float(by_name[name])
+        for name, qty in by_name_series.sort_index().items():
+            count = float(qty)
             defect_total += count
             ppm = 0.0 if move_qty <= 0 else round((count / move_qty) * 1_000_000, 1)
+            label = "" if pd.isna(name) else str(name).strip()
+            if not label:
+                label = "기타"
             defects.append(
                 {
-                    "name": name,
+                    "name": label,
                     "count": int(count) if count.is_integer() else round(count, 4),
                     "ppm": ppm,
                 }
             )
 
         total_ppm = 0.0 if move_qty <= 0 else round((defect_total / move_qty) * 1_000_000, 1)
+        if defect_total > 0:
+            nonzero_lot_count += 1
+        print(
+            f"[lot_ppm_compare] lot_id={lot_id} matched_defect_rows={len(d_lot)} "
+            f"defect_total={int(defect_total) if defect_total.is_integer() else round(defect_total, 4)}"
+        )
         out.append(
             {
                 "lot_id": lot_id,
@@ -1406,11 +1694,12 @@ def compute_lot_defect_ppm_from_shipments(
                 else round(defect_total, 4),
                 "total_ppm": total_ppm,
                 "defects": defects,
-                "match_source": "lot_by_shipment_lot",
+                "match_source": "shipment_vs_defect_parent_lot_id",
                 "ao_source": "shipment_move_qty",
             }
         )
 
+    print(f"[lot_ppm_debug] nonzero_lot_count={nonzero_lot_count}")
     return out
 
 

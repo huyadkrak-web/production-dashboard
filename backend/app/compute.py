@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import re
 from datetime import date, datetime
@@ -375,17 +376,31 @@ def compute_tables(
     # (meta.prev_date 필드도 동일 값으로 반환)
     prev_date = base_date
     warnings: list[str] = []
+    production_calc_month_start = date(base_date.year, base_date.month, 1)
+
+    def _manual_defect_record_in_month(d_raw: str) -> bool:
+        ds = str(d_raw or "").strip()[:10]
+        if len(ds) < 10:
+            return False
+        try:
+            dvs = date.fromisoformat(ds)
+        except ValueError:
+            return False
+        return production_calc_month_start <= dvs <= base_date
 
     df_master = _master_from_api(master_list, warnings)
     df_plan, month_total, month_label = _plan_from_api(plan_list, warnings)
 
     # defect_list: 참고용 문자열만 defect_cumulative_types에 반영 (전일/누적 개수·PPM은 Excel Reject 전용)
     # 새 구조: 제품 + 공정대분류(Front/Back End) 단위로 multi-line 텍스트를 저장
+    # 화면 누적불량유형(수기): 기준월 1일~base_date만 (전월까지 합류 방지·공정불량 API 원본 목록 불변 여부 무관하게 표시만 제한)
     defect_manual_latest: dict[tuple[str, str], tuple[str, str]] = {}
     if defect_list:
         for d in defect_list:
             d_date = str(d.get("date") or "").strip()
             if not d_date or d_date > str(base_date):
+                continue
+            if not _manual_defect_record_in_month(d_date):
                 continue
             product = str(d.get("product", "")).strip()
             process_group = str(d.get("process_group", "")).strip()
@@ -440,11 +455,33 @@ def compute_tables(
         _wd_sample_10,
     )
 
-    # 날짜 필터 (누적: 작업일보에서 base_date까지)
+    # 생산일보 누적 구간: 기준일이 속한 달의 1일 ~ 기준일(공정불량 등은 같은 엑셀 내 전월 행 활용 가능,
+    # 생산일보는 기준 월 내 실적만 합산)
+    original_work_rows = len(df_work_today)
+    _wd_all_valid = df_work_today[work_date_col].dropna()
+    min_work_date_before = _wd_all_valid.min() if not _wd_all_valid.empty else None
+    max_work_date_before = _wd_all_valid.max() if not _wd_all_valid.empty else None
+
     df_today_upto = df_work_today[
         (df_work_today[work_date_col].notna())
+        & (df_work_today[work_date_col] >= production_calc_month_start)
         & (df_work_today[work_date_col] <= base_date)
     ]
+    filtered_work_rows = len(df_today_upto)
+    _wd_mtd_valid = df_today_upto[work_date_col].dropna()
+    min_work_date_after = _wd_mtd_valid.min() if not _wd_mtd_valid.empty else None
+    max_work_date_after = _wd_mtd_valid.max() if not _wd_mtd_valid.empty else None
+
+    _pfilter_msg = (
+        f"[production_work_month_filter] base_date={base_date} "
+        f"production_calc_month_start={production_calc_month_start} "
+        f"original_work_rows={original_work_rows} filtered_work_rows={filtered_work_rows} "
+        f"min_work_date_before={min_work_date_before} max_work_date_before={max_work_date_before} "
+        f"min_work_date_after={min_work_date_after} max_work_date_after={max_work_date_after}"
+    )
+    _log.info(_pfilter_msg)
+    print(_pfilter_msg)
+
     if df_work_today[work_date_col].notna().any():
         df_prev_day = df_work_today[df_work_today[work_date_col] == base_date]
         if df_prev_day.empty:
@@ -514,6 +551,8 @@ def compute_tables(
 
     prev_day_debug_lines = [
         f"[PREV_DAY_DEBUG] base_date={base_date}",
+        f"[PREV_DAY_DEBUG] production_calc_month_start={production_calc_month_start} "
+        f"(생산일보 누적 = 해당월 1일 ~ base_date)",
         f"[PREV_DAY_DEBUG] df_work_today rows={len(df_work_today)}",
         f"[PREV_DAY_DEBUG] work_date sample10={work_date_sample_10}",
         f"[PREV_DAY_DEBUG] work_date min={work_date_min} max={work_date_max}",
@@ -528,11 +567,96 @@ def compute_tables(
         _log.info(line)
         print(line)
 
-    # 누적 불량유형
-    if defect_type_col in df_today_upto.columns:
-        df_def = df_today_upto[
-            (df_today_upto[defect_type_col] != "")
-            & (df_today_upto[defect_qty_col] > 0)
+    # 누적 불량유형: 진척/조립 Reject 숫자는 df_today_upto(work_date 월)~base_date 동일하지만,
+    # 표시 문자열은 불량 발생일(있으면) 기준 월 필터만 적용(작업종료가 5월·불량일이 4월인 행 제외 등).
+    def _norm_hdr_key(cell: Any) -> str:
+        if cell is None or (isinstance(cell, float) and pd.isna(cell)):
+            return ""
+        return (
+            str(cell)
+            .strip()
+            .replace(" ", "")
+            .replace("\n", "")
+            .replace("\u3000", "")
+            .upper()
+        )
+
+    def _find_defect_occurrence_column(cols: list[str]) -> str | None:
+        by_key: dict[str, str] = {}
+        for c in cols:
+            cs = str(c).strip()
+            if not cs:
+                continue
+            k = _norm_hdr_key(cs)
+            if k and k not in by_key:
+                by_key[k] = cs
+        for p in (
+            "불량일자",
+            "불량발생일",
+            "발생일자",
+            "발생일",
+            "REJECT일자",
+            "REJECT발생일",
+            "Reject일자",
+        ):
+            if _norm_hdr_key(p) in by_key:
+                return by_key[_norm_hdr_key(p)]
+        return None
+
+    defect_occ_col = _find_defect_occurrence_column(
+        list(df_work_today.columns.astype(str)),
+    )
+
+    if defect_occ_col:
+        dd_ser = _to_date_series(df_work_today[defect_occ_col])
+        mtd_cd_mask = dd_ser.notna() & (dd_ser >= production_calc_month_start) & (dd_ser <= base_date)
+        cd_date_source_note = f"defect_occurrence_column={defect_occ_col!r}"
+    else:
+        wdc_base = df_work_today[work_date_col].notna() & (df_work_today[work_date_col] <= base_date)
+        mtd_cd_mask = wdc_base & (df_work_today[work_date_col] >= production_calc_month_start)
+        cd_date_source_note = "defect_occurrence_fallback=work_date"
+
+    df_cumulative_def = df_work_today.loc[mtd_cd_mask]
+
+    def _qty_type_nonempty_mask(dfx: pd.DataFrame) -> pd.Series:
+        return (
+            pd.to_numeric(dfx[defect_qty_col], errors="coerce").fillna(0) > 0
+        ) & (dfx[defect_type_col].astype(str).fillna("") != "")
+
+    cumulative_def_before_month_filter = 0
+    cumulative_def_after_month_filter = 0
+    if defect_type_col in df_work_today.columns:
+        cdf_before_slice = _qty_type_nonempty_mask(df_today_upto)
+        cdf_after_slice = _qty_type_nonempty_mask(df_cumulative_def)
+        cumulative_def_before_month_filter = int(cdf_before_slice.sum())
+        cumulative_def_after_month_filter = int(cdf_after_slice.sum())
+
+    cd_log = (
+        "[cumulative_defect_month_filter] "
+        + json.dumps(
+            {
+                "cumulative_defect_month_start": str(production_calc_month_start),
+                "cumulative_defect_base_date": str(base_date),
+                "cumulative_defect_before_month_filter": cumulative_def_before_month_filter,
+                "cumulative_defect_after_month_filter": cumulative_def_after_month_filter,
+                "defect_occurrence_detection": cd_date_source_note,
+            },
+            ensure_ascii=False,
+        )
+    )
+    _log.info(cd_log)
+    print(cd_log)
+
+    # 누적 불량유형 문자열(Reject유형 문자열 표시만 df_cumulative_def 사용)
+    if defect_type_col in df_cumulative_def.columns:
+        df_def = df_cumulative_def[
+            (df_cumulative_def[defect_type_col].astype(str).fillna("") != "")
+            & (
+                pd.to_numeric(df_cumulative_def[defect_qty_col], errors="coerce").fillna(
+                    0,
+                )
+                > 0
+            )
         ][key_cols + [defect_type_col, defect_qty_col]].copy()
 
         if df_def.empty:

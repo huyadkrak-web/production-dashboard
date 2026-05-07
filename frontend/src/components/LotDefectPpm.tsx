@@ -171,7 +171,15 @@ const LotDefectPpm = React.forwardRef<HTMLDivElement, LotDefectPpmProps>((props,
     setError(null);
     try {
       const res = await getDefectAutoLotDefects();
-      setRows(Array.isArray(res.lot_defects) ? res.lot_defects : []);
+      console.log("[lot_defects_api_raw]", res);
+      const raw = res as unknown;
+      const parsed = Array.isArray((raw as { lot_defects?: unknown }).lot_defects)
+        ? ((raw as { lot_defects: DefectAutoLotDefectRow[] }).lot_defects ?? [])
+        : Array.isArray(raw)
+          ? (raw as DefectAutoLotDefectRow[])
+          : [];
+      console.log("[lot_defects_parsed_count]", parsed.length);
+      setRows(parsed);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setRows([]);
@@ -231,7 +239,12 @@ const LotDefectPpm = React.forwardRef<HTMLDivElement, LotDefectPpmProps>((props,
       });
   }, [rows, defectNames]);
 
-  const hasChart = chartData.length > 0 && defectNames.length > 0;
+  useEffect(() => {
+    console.log("[lot_chart_data_count]", chartData.length);
+    console.log("[lot_chart_first_row]", chartData.length > 0 ? chartData[0] : null);
+  }, [chartData]);
+
+  const hasChart = chartData.length > 0;
 
   /** 월별·주차별과 동일 좌우 여백; X축 LOT 라벨(세로)용으로 bottom만 크게 */
   const lotMargin = useMemo(
@@ -424,11 +437,13 @@ const LotDefectPpm = React.forwardRef<HTMLDivElement, LotDefectPpmProps>((props,
                         pdfOnePageChartH,
                         DEFECT_PPM_COMPOSED_CHART_MARGIN,
                       )}
-                      <LotLegend labels={defectNames} wrapStyle={lotPdfOnePageLegendWrap} />
+                      {defectNames.length > 0 ? (
+                        <LotLegend labels={defectNames} wrapStyle={lotPdfOnePageLegendWrap} />
+                      ) : null}
                     </div>
                   ) : (
                     <div className="hint" style={{ padding: 16, textAlign: "center", width: "100%" }}>
-                      차트를 표시할 불량명이 없습니다.
+                      차트를 표시할 데이터가 없습니다.
                     </div>
                   )}
                 </div>
@@ -473,7 +488,7 @@ const LotDefectPpm = React.forwardRef<HTMLDivElement, LotDefectPpmProps>((props,
                       {renderLotComposedChart(false)}
                     </ResponsiveContainer>
                   </div>
-                  <LotLegend labels={defectNames} />
+                  {defectNames.length > 0 ? <LotLegend labels={defectNames} /> : null}
                 </div>
               ) : null}
             </div>

@@ -1773,12 +1773,34 @@ export default function App() {
   ): AssemblyDefectRowNormalized[] => {
     const normalized = normalizeAsmRows(cloneAssemblyDefectRows(originalRows));
     const manualSummaryMap = buildManualSummaryMap();
+    const tracedGroupKeys = new Set<string>();
+    let traceGroupCount = 0;
+    const MAX_CUM_TYPE_TRACE_GROUPS = 10;
+
     return normalized.map((r) => {
       const key = `${r.effectiveProduct}__${r.effectiveProcessGroup}`;
       const manualSummary = manualSummaryMap.get(key);
+      const backendTypes = String(r.defect_cumulative_types ?? "").trim();
+      const manualStr =
+        manualSummary !== undefined && manualSummary !== null
+          ? String(manualSummary).trim()
+          : "";
+      /** 화면/PDF "누적불량유형" 컬럼: 코드별불량 엑셀 기반 수기(defectRows)가 있으면 API 문자열을 덮어씀 */
+      const mergedTypes = manualStr !== "" ? manualStr : backendTypes;
+
+      if (traceGroupCount < MAX_CUM_TYPE_TRACE_GROUPS && !tracedGroupKeys.has(key)) {
+        tracedGroupKeys.add(key);
+        traceGroupCount += 1;
+        console.info("[cum_type_trace] process=buildAsmRowsWithManualSummary");
+        console.info("[cum_type_trace] response_field_key=defect_cumulative_types");
+        console.info(`[cum_type_trace] before_filter_value=${JSON.stringify(backendTypes)}`);
+        console.info(`[cum_type_trace] after_filter_value=${JSON.stringify(mergedTypes)}`);
+        console.info(`[cum_type_trace] response_value=${JSON.stringify(mergedTypes)}`);
+      }
+
       return {
         ...r,
-        defect_cumulative_types: manualSummary ?? String(r.defect_cumulative_types ?? ""),
+        defect_cumulative_types: mergedTypes,
       };
     });
   };
