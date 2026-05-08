@@ -450,8 +450,26 @@ const PDF_ONE_PAGE_TABLE_HOST_STYLE: CSSProperties = {
   boxSizing: "border-box",
 };
 
-/** 1페이지 PDF 전용 wrapper 차트 주입용 (downloadPdf 3페이지 경로와 별도, 동일 선택·래스터 규칙) */
-const PDF_ONE_PAGE_SVG_RASTER_SCALE = 2;
+/** 1페이지 PDF 차트 SVG→PNG 배율 (html2canvas scale와 분리; 고 DPI 디바이스에서 상향 가능) */
+function pdfEffectiveSvgRasterScale(): number {
+  if (typeof window === "undefined") return 3;
+  const dpr = Number(window.devicePixelRatio) || 2;
+  return Math.min(4, Math.max(3, Math.ceil(dpr * 1.25)));
+}
+
+/** html2canvas scale — 디바이스 픽셀 비율 반영, 선명도 우선(문서 용량 증가 허용) */
+function pdfEffectiveHtml2canvasScale(): number {
+  if (typeof window === "undefined") return 3;
+  const dpr = Number(window.devicePixelRatio) || 2;
+  return Math.min(3.5, Math.max(2.75, Math.ceil(dpr * 1.35)));
+}
+
+async function pdfReflowChartsOnce(): Promise<void> {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event("resize"));
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+}
 
 /** jsPDF에 넣을 래스터 크기·위치(mm) — 1·2페이지 동일 규칙(가로 우선, 세로 넘치면 가로 축소·가운데) */
 function defectPpmPdfRasterDestMm(
@@ -581,6 +599,8 @@ function svgElementToPngDataUrlForOnePage(
         }
         ctx.fillStyle = "#ffffff";
         ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         resolve(canvas.toDataURL("image/png"));
       } catch (e) {
@@ -1425,7 +1445,8 @@ export default function App() {
 
     const run = async () => {
       await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
-      await new Promise<void>((r) => setTimeout(r, 300));
+      await pdfReflowChartsOnce();
+      await new Promise<void>((r) => setTimeout(r, 280));
       if (cancelled) return;
 
       const pdfRoot = pdfOnePageRef.current;
@@ -1447,7 +1468,7 @@ export default function App() {
             pickedW.svg,
             pickedW.width,
             pickedW.height,
-            PDF_ONE_PAGE_SVG_RASTER_SCALE,
+            pdfEffectiveSvgRasterScale(),
           );
           if (!cancelled) {
             setOnePageWeeklyChartPng(url);
@@ -1471,7 +1492,7 @@ export default function App() {
             pickedM.svg,
             pickedM.width,
             pickedM.height,
-            PDF_ONE_PAGE_SVG_RASTER_SCALE,
+            pdfEffectiveSvgRasterScale(),
           );
           if (!cancelled) {
             setOnePageMonthlyChartPng(url);
@@ -1942,7 +1963,8 @@ export default function App() {
     const captureMonthly = monthlyDefectRef.current;
     const contentTarget = target.querySelector("[data-pdf-capture-root]") as HTMLElement | null;
     const sizeRef = contentTarget ?? target;
-    const scale = 2;
+    const scale = pdfEffectiveHtml2canvasScale();
+    const svgRasterScale = pdfEffectiveSvgRasterScale();
     let bodyClone: HTMLElement | null = null;
     let lotClone: HTMLElement | null = null;
     const html2canvasOptsForOnePage = {
@@ -1988,6 +2010,7 @@ export default function App() {
             c.remove();
           }
         });
+        void clonedElement.offsetHeight;
       },
     };
 
@@ -1997,7 +2020,8 @@ export default function App() {
       setPdfCapture(true);
 
       await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
-      await new Promise<void>((r) => setTimeout(r, 300));
+      await pdfReflowChartsOnce();
+      await new Promise<void>((r) => setTimeout(r, 360));
 
       let weeklyPng: string | null = null;
       let monthlyPng: string | null = null;
@@ -2009,7 +2033,7 @@ export default function App() {
             pickedWeekly.svg,
             pickedWeekly.width,
             pickedWeekly.height,
-            PDF_ONE_PAGE_SVG_RASTER_SCALE,
+            svgRasterScale,
           );
           console.log("[PDF][ONEPAGE] weekly png generated");
         } catch (genWErr) {
@@ -2026,7 +2050,7 @@ export default function App() {
             pickedMonthly.svg,
             pickedMonthly.width,
             pickedMonthly.height,
-            PDF_ONE_PAGE_SVG_RASTER_SCALE,
+            svgRasterScale,
           );
           console.log("[PDF][ONEPAGE] monthly png generated");
         } catch (genMErr) {
@@ -2042,7 +2066,8 @@ export default function App() {
       });
 
       await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
-      await new Promise<void>((r) => setTimeout(r, 280));
+      await pdfReflowChartsOnce();
+      await new Promise<void>((r) => setTimeout(r, 220));
 
       const readChartImgs = () => {
         const wPh = target.querySelector("[data-pdf-chart-placeholder=\"weekly-ppm\"]");
@@ -2126,8 +2151,11 @@ export default function App() {
       bodyClone.style.zIndex = "2147483646";
       bodyClone.style.transform = "translate3d(calc(-100vw - 2400px), 0, 0)";
       document.body.appendChild(bodyClone);
+      void bodyClone.offsetHeight;
+      window.dispatchEvent(new Event("resize"));
       await new Promise<void>((r) => requestAnimationFrame(() => r()));
-      await new Promise<void>((r) => setTimeout(r, 300));
+      await pdfReflowChartsOnce();
+      await new Promise<void>((r) => setTimeout(r, 240));
 
       const captureOverflowTargets = bodyClone.querySelectorAll(
         ".card, .tableWrap, .weekly-defect-chart-capture-target, [data-pdf-capture-root]",
@@ -2207,7 +2235,7 @@ export default function App() {
               pickedLot.svg,
               pickedLot.width,
               pickedLot.height,
-              PDF_ONE_PAGE_SVG_RASTER_SCALE,
+              svgRasterScale,
             );
             lotClone = lotCaptureTarget.cloneNode(true) as HTMLElement;
             lotClone.classList.add("pdf-export-mode");
@@ -2234,6 +2262,8 @@ export default function App() {
             /* 클론은 문서에 붙이기 전엔 레이아웃이 없어 SVG 면적이 0 → 선택 실패 → img 미주입 → html2canvas 빈 페이지 */
             document.body.appendChild(lotClone);
             void lotClone.offsetHeight;
+            window.dispatchEvent(new Event("resize"));
+            await pdfReflowChartsOnce();
             await new Promise<void>((r) => requestAnimationFrame(() => r()));
 
             let clonePick = selectLargestSvgFromRoot(lotClone);
@@ -2286,6 +2316,9 @@ export default function App() {
               allowTaint: true,
               foreignObjectRendering: false,
               logging: false,
+              onclone: (_doc: Document, el: HTMLElement) => {
+                void el.offsetHeight;
+              },
             };
 
             const placeLotChartPngOnly = () => {

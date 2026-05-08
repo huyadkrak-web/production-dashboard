@@ -771,6 +771,25 @@ input.app-base-date-input[type="date"]::-webkit-calendar-picker-indicator:hover 
 .pdf-export-mode .weekly-defect-ppm-chart-fixed .recharts-wrapper {
   overflow: visible !important;
 }
+/* PDF 래스터화 시 차트 텍스트·선윤곽 선명도(확대 시 흐림 완화) */
+.pdf-export-mode .recharts-surface {
+  shape-rendering: geometricPrecision;
+}
+.pdf-export-mode .recharts-cartesian-axis-tick text,
+.pdf-export-mode .recharts-legend-item text,
+.pdf-export-mode .recharts-label-list text,
+.pdf-export-mode .recharts-line .recharts-label text {
+  text-rendering: geometricPrecision;
+}
+.pdf-export-mode .recharts-cartesian-grid line {
+  shape-rendering: crispEdges;
+}
+.pdf-export-mode .recharts-bar-rectangle {
+  shape-rendering: crispEdges;
+}
+.pdf-export-mode .recharts-line-curve {
+  shape-rendering: geometricPrecision;
+}
 .pdf-export-mode .button {
   background: #fff !important;
   border-color: #d1d5db !important;

@@ -39,7 +39,7 @@ const COLORS = [
 const LOT_X_TICK = { fill: "#1e293b", fontSize: 12, fontWeight: 600 };
 const LOT_Y_TICK = { fill: "#1e293b", fontSize: 12, fontWeight: 600 };
 const LOT_AXIS_STROKE = "#64748b";
-/** PDF 고정폭만: 세로 LOT ID 라벨(-90°)용 X축 밴드 높이만 96→104로 소폭 확대(막대·전체 차트 높이는 유지) */
+/** PDF 고정폭만: 세로 LOT ID 라벨(-90°)용 X축 밴드 높이(기존 값 유지) */
 const LOT_PDF_FIXED_X_AXIS_HEIGHT_PX = 104;
 
 type LotDefectPpmProps = {
@@ -299,6 +299,11 @@ const LotDefectPpm = React.forwardRef<HTMLDivElement, LotDefectPpmProps>((props,
   ) {
     const cw = fixed ? (chartWidth ?? DEFECT_PPM_FIXED_CHART_WIDTH) : undefined;
     const ch = fixed ? (chartHeight ?? DEFECT_PPM_PLOT_HEIGHT) : undefined;
+    const xDataKey = "lot_label";
+    const xTick = LOT_X_TICK;
+    const yTick = LOT_Y_TICK;
+    const ppmTopLabelFs = 11;
+
     return (
       <ComposedChart
         data={chartData}
@@ -308,8 +313,8 @@ const LotDefectPpm = React.forwardRef<HTMLDivElement, LotDefectPpmProps>((props,
       >
         <CartesianGrid strokeDasharray="3 3" stroke="#cbd5e1" />
         <XAxis
-          dataKey="lot_label"
-          tick={LOT_X_TICK}
+          dataKey={xDataKey}
+          tick={xTick}
           tickLine={{ stroke: LOT_AXIS_STROKE }}
           axisLine={{ stroke: LOT_AXIS_STROKE }}
           angle={-90}
@@ -320,14 +325,21 @@ const LotDefectPpm = React.forwardRef<HTMLDivElement, LotDefectPpmProps>((props,
           padding={lotXAxisPadding}
         />
         <YAxis
-          tick={LOT_Y_TICK}
+          tick={yTick}
           tickLine={{ stroke: LOT_AXIS_STROKE }}
           axisLine={{ stroke: LOT_AXIS_STROKE }}
           tickFormatter={(v) => fmt(num(v))}
         />
         <Tooltip content={<LotTooltip />} />
         {defectNames.map((name, idx) => (
-          <Bar key={name} dataKey={`d_${idx}`} stackId="stack" name={name} fill={COLORS[idx % COLORS.length]} />
+          <Bar
+            key={name}
+            dataKey={`d_${idx}`}
+            stackId="stack"
+            name={name}
+            fill={COLORS[idx % COLORS.length]}
+            isAnimationActive={!fixed}
+          />
         ))}
         <Line
           dataKey="total_ppm"
@@ -340,7 +352,7 @@ const LotDefectPpm = React.forwardRef<HTMLDivElement, LotDefectPpmProps>((props,
             dataKey="total_ppm"
             position="top"
             fill="#6b7280"
-            fontSize={11}
+            fontSize={ppmTopLabelFs}
             fontWeight={600}
             formatter={(v: unknown) => {
               const n = Number(v);

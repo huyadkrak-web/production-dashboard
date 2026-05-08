@@ -205,6 +205,15 @@ const WeeklyDefectPPM = React.forwardRef<HTMLDivElement, WeeklyDefectPPMProps>(
       [chartColumnIndices, defectColumnNames],
     );
 
+    const chartAnimOn = !pdfExportMode;
+    const xTickStyle = WEEKLY_X_TICK;
+    const yTickStyle = WEEKLY_Y_TICK;
+    const barCenterLabelFs = 10;
+    const totalPpmLabelFs = TOTAL_PPM_LABEL_FONT_SIZE;
+    const lineStrokeW = pdfExportMode ? LINE_STROKE_WIDTH + 1 : LINE_STROKE_WIDTH;
+    const lineDotR = pdfExportMode ? 5 : 4;
+    const lineActiveDotR = pdfExportMode ? 7 : 6;
+
     useEffect(() => {
       onPdfLegendEntriesChange?.(buildWeeklyPdfLegendEntries(chartLabels));
     }, [chartLabels, onPdfLegendEntriesChange]);
@@ -486,7 +495,7 @@ const WeeklyDefectPPM = React.forwardRef<HTMLDivElement, WeeklyDefectPPMProps>(
                       <CartesianGrid strokeDasharray="3 3" stroke="#cbd5e1" />
                       <XAxis
                         dataKey="week"
-                        tick={WEEKLY_X_TICK}
+                        tick={xTickStyle}
                         tickLine={{ stroke: WEEKLY_AXIS_STROKE }}
                         axisLine={{ stroke: WEEKLY_AXIS_STROKE }}
                         tickMargin={14}
@@ -494,7 +503,7 @@ const WeeklyDefectPPM = React.forwardRef<HTMLDivElement, WeeklyDefectPPMProps>(
                         padding={xAxisPadding}
                       />
                       <YAxis
-                        tick={WEEKLY_Y_TICK}
+                        tick={yTickStyle}
                         tickLine={{ stroke: WEEKLY_AXIS_STROKE }}
                         axisLine={{ stroke: WEEKLY_AXIS_STROKE }}
                         tickMargin={10}
@@ -513,7 +522,7 @@ const WeeklyDefectPPM = React.forwardRef<HTMLDivElement, WeeklyDefectPPMProps>(
                           <LabelList
                             dataKey={chartDataKeyAt(idx)}
                             position="center"
-                            fontSize={10}
+                            fontSize={barCenterLabelFs}
                             fill="rgba(0,0,0,0.75)"
                             formatter={(v: unknown) =>
                               isNullishChartNumber(v) || num(v) < PPM_MIN_LABEL
@@ -528,16 +537,16 @@ const WeeklyDefectPPM = React.forwardRef<HTMLDivElement, WeeklyDefectPPMProps>(
                         dataKey="total_ppm"
                         name="총 불량율(ppm)"
                         stroke={WEEKLY_TOTAL_PPM_LINE_COLOR}
-                        strokeWidth={LINE_STROKE_WIDTH}
-                        dot={{ r: 4 }}
-                        activeDot={{ r: 6 }}
+                        strokeWidth={lineStrokeW}
+                        dot={{ r: lineDotR }}
+                        activeDot={{ r: lineActiveDotR }}
                         connectNulls={false}
                         isAnimationActive={false}
                       >
                         <LabelList
                           dataKey="total_ppm"
                           position="top"
-                          fontSize={TOTAL_PPM_LABEL_FONT_SIZE}
+                          fontSize={totalPpmLabelFs}
                           fontWeight={TOTAL_PPM_LABEL_FONT_WEIGHT}
                           formatter={(v: unknown) =>
                             isNullishChartNumber(v) ? "" : formatPpmKr(num(v))
@@ -554,7 +563,7 @@ const WeeklyDefectPPM = React.forwardRef<HTMLDivElement, WeeklyDefectPPMProps>(
                         <CartesianGrid strokeDasharray="3 3" stroke="#cbd5e1" />
                         <XAxis
                           dataKey="week"
-                          tick={WEEKLY_X_TICK}
+                          tick={xTickStyle}
                           tickLine={{ stroke: WEEKLY_AXIS_STROKE }}
                           axisLine={{ stroke: WEEKLY_AXIS_STROKE }}
                           tickMargin={14}
@@ -562,7 +571,7 @@ const WeeklyDefectPPM = React.forwardRef<HTMLDivElement, WeeklyDefectPPMProps>(
                           padding={xAxisPadding}
                         />
                         <YAxis
-                          tick={WEEKLY_Y_TICK}
+                          tick={yTickStyle}
                           tickLine={{ stroke: WEEKLY_AXIS_STROKE }}
                           axisLine={{ stroke: WEEKLY_AXIS_STROKE }}
                           tickMargin={10}
@@ -576,11 +585,12 @@ const WeeklyDefectPPM = React.forwardRef<HTMLDivElement, WeeklyDefectPPMProps>(
                             stackId="stack"
                             name={lab}
                             fill={WEEKLY_DEFECT_STACK_COLORS[idx % WEEKLY_DEFECT_STACK_COLORS.length]}
+                            isAnimationActive={chartAnimOn}
                           >
                             <LabelList
                               dataKey={chartDataKeyAt(idx)}
                               position="center"
-                              fontSize={10}
+                              fontSize={barCenterLabelFs}
                               fill="rgba(0,0,0,0.75)"
                               formatter={(v: unknown) =>
                                 isNullishChartNumber(v) || num(v) < PPM_MIN_LABEL
@@ -595,15 +605,16 @@ const WeeklyDefectPPM = React.forwardRef<HTMLDivElement, WeeklyDefectPPMProps>(
                           dataKey="total_ppm"
                           name="총 불량율(ppm)"
                           stroke={WEEKLY_TOTAL_PPM_LINE_COLOR}
-                          strokeWidth={LINE_STROKE_WIDTH}
-                          dot={{ r: 4 }}
-                          activeDot={{ r: 6 }}
+                          strokeWidth={lineStrokeW}
+                          dot={{ r: lineDotR }}
+                          activeDot={{ r: lineActiveDotR }}
                           connectNulls={false}
+                          isAnimationActive={chartAnimOn}
                         >
                           <LabelList
                             dataKey="total_ppm"
                             position="top"
-                            fontSize={TOTAL_PPM_LABEL_FONT_SIZE}
+                            fontSize={totalPpmLabelFs}
                             fontWeight={TOTAL_PPM_LABEL_FONT_WEIGHT}
                             formatter={(v: unknown) =>
                               isNullishChartNumber(v) ? "" : formatPpmKr(num(v))
