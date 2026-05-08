@@ -7,6 +7,7 @@ from collections import Counter
 import pandas as pd
 
 from ..db import supabase_delete_all, supabase_delete_by_filters, supabase_get, supabase_insert
+from ..excluded_sample_lots import filter_shipment_dict_rows
 from .calculator import get_week_label
 
 _SHIPMENT_COLS = ["move_date", "week", "lot_id", "product", "move_qty"]
@@ -91,6 +92,7 @@ def _build_shipment_summary(records: list[dict]) -> dict | None:
 def save_shipment(df: pd.DataFrame) -> dict | None:
     """``parse_shipment`` 결과를 Supabase ``shipment`` 테이블에 누적 저장합니다."""
     new_rows = _df_to_shipment_records(df)
+    new_rows = filter_shipment_dict_rows(new_rows, context="save_shipment")
     if not new_rows:
         return get_shipment_summary()
 
@@ -143,7 +145,7 @@ def load_shipment() -> list[dict]:
         if not normalized:
             continue
         rows.append(normalized)
-    data = rows
+    data = filter_shipment_dict_rows(rows, context="load_shipment")
     print("[shipment] loaded")
     return data
 

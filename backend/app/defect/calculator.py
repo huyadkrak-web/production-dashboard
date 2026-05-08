@@ -7,6 +7,11 @@ from typing import Any
 
 import pandas as pd
 
+from ..excluded_sample_lots import (
+    apply_defect_automation_filters,
+    filter_defect_dataframe,
+    filter_shipment_dataframe,
+)
 from .parser import _clean_lot
 
 # 주·월 조립 불량률 PPM 분모: 작업일보 **D/A 1차 투입** 행의 ``input_qty`` 합.
@@ -1225,6 +1230,14 @@ def compute_weekly_defect(
     list[dict[str, Any]]
         주차별 ``week``, ``ao_qty``, ``defect_total``, ``total_ppm``, ``defects`` 목록.
     """
+    shipment_df = filter_shipment_dataframe(
+        shipment_df.copy(),
+        context="compute_weekly_defect.shipment_df",
+    )
+    defect_df = filter_defect_dataframe(
+        defect_df.copy(),
+        context="compute_weekly_defect.defect_df",
+    )
     ship = shipment_df.copy()
     before = len(ship)
     ship = ship[ship["move_date"].notna()].copy()
@@ -1251,6 +1264,12 @@ def compute_weekly_defect_from_shipments(
     work_df: pd.DataFrame,
 ) -> list[dict[str, Any]]:
     """출하로 주차별 AO를 잡고, 해당 주 출하 LOT과 불량 LOT 교집합으로 집계합니다."""
+    shipments, defect_df, work_df = apply_defect_automation_filters(
+        shipments,
+        defect_df,
+        work_df,
+        context="weekly_defect_from_shipments",
+    )
     if not shipments:
         return []
 
@@ -1302,6 +1321,12 @@ def compute_monthly_defect_from_shipments(
     work_df: pd.DataFrame,
 ) -> list[dict[str, Any]]:
     """출하로 월별 AO를 잡고, 해당 월 출하 LOT과 불량 LOT 교집합으로 집계합니다."""
+    shipments, defect_df, work_df = apply_defect_automation_filters(
+        shipments,
+        defect_df,
+        work_df,
+        context="monthly_defect_from_shipments",
+    )
     if not shipments:
         return []
 
@@ -1340,6 +1365,12 @@ def compute_lot_defect_ppm_from_shipments(
     출하 ``lot_id``는 코드별 불량현황의 **부모 LOTID**(생산 추적 단위)와 맞춥니다.
     불량 발생 후 새로 채번된 LOT ID 컬럼과 직접 비교하지 않습니다.
     """
+    shipments, defect_df, _ = apply_defect_automation_filters(
+        shipments,
+        defect_df,
+        pd.DataFrame(),
+        context="lot_defect_ppm_from_shipments",
+    )
     if not shipments:
         return []
 

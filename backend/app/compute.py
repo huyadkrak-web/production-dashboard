@@ -9,6 +9,7 @@ from typing import Any, Iterable
 
 import pandas as pd
 
+from .excluded_sample_lots import filter_compute_work_dataframe
 from .settings import settings
 
 _log = logging.getLogger(__name__)
@@ -433,6 +434,10 @@ def compute_tables(
             _issue_raw_date_sample = [f"<missing column {_wcol!r}>"]
 
     df_work_today = _load_work(df_work_today_raw, warnings)
+    df_work_today = filter_compute_work_dataframe(
+        df_work_today,
+        context="compute_tables.work",
+    )
 
     # 내부 표준 컬럼명 사용 (work_date, product, process_code, good_qty, defect_qty, defect_type)
     key_cols = ["product", "process_code"]
