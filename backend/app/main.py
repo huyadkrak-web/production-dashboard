@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from datetime import date, datetime
 
-from fastapi import FastAPI, File, Form, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 from .compute import compute_tables
@@ -35,6 +35,29 @@ app.include_router(weekly_defect_router)
 app.include_router(monthly_defect_router)
 app.include_router(defect_auto_router)
 
+MASTER_SAVE_REJECT_MSG = "저장할 기준정보가 없습니다. 먼저 기준정보를 불러와 주세요."
+MASTER_SAVE_BLOCK_LOG = "[기준정보저장차단] 기준정보 미로드 또는 빈 데이터"
+
+
+def _validate_master_save_body(body: object) -> list[dict]:
+    """빈·불완전 payload는 저장 거부(기존 DB 삭제 방지)."""
+    if not isinstance(body, list):
+        print(MASTER_SAVE_BLOCK_LOG)
+        raise HTTPException(status_code=400, detail=MASTER_SAVE_REJECT_MSG)
+    if len(body) == 0:
+        print(MASTER_SAVE_BLOCK_LOG)
+        raise HTTPException(status_code=400, detail=MASTER_SAVE_REJECT_MSG)
+    for row in body:
+        if not isinstance(row, dict):
+            print(MASTER_SAVE_BLOCK_LOG)
+            raise HTTPException(status_code=400, detail=MASTER_SAVE_REJECT_MSG)
+        product = str(row.get("product") or "").strip()
+        process_code = str(row.get("process_code") or "").strip()
+        if not product or not process_code:
+            print(MASTER_SAVE_BLOCK_LOG)
+            raise HTTPException(status_code=400, detail=MASTER_SAVE_REJECT_MSG)
+    return body
+
 
 @app.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
@@ -48,6 +71,7 @@ def api_get_master() -> list[dict]:
 
 @app.post("/master")
 def api_save_master(body: list[dict]) -> dict:
+    _validate_master_save_body(body)
     save_master(body)
     return {"status": "ok", "message": "saved"}
 

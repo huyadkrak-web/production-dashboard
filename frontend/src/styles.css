@@ -684,8 +684,10 @@ input.app-base-date-input[type="date"]::-webkit-calendar-picker-indicator:hover 
   border: 1px solid #e5e7eb !important;
   border-radius: 14px !important;
   background: #fff !important;
-  box-shadow: none !important;
-  padding: 16px 18px 18px !important;
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 8px 24px rgba(148, 163, 184, 0.12) !important;
+  padding: 12px 14px 14px !important;
   box-sizing: border-box !important;
 }
 /* PDF 2페이지 LOT 카드 외곽: 1페이지 카드와 같은 진한 톤 */
@@ -760,16 +762,36 @@ input.app-base-date-input[type="date"]::-webkit-calendar-picker-indicator:hover 
 .pdf-export-mode .weekly-defect-ppm-chart-fixed {
   background: #fff !important;
   overflow: visible !important;
-  min-height: 420px !important;
+  /* 높이는 차트+범례 인라인 크기에 맡김 — 과도한 min-height로 PDF 레이아웃 밀림 방지 */
+  min-height: 0 !important;
 }
 .pdf-export-mode .weekly-defect-ppm-chart-fixed {
   width: 1150px !important;
-  min-height: 526px !important;
   height: auto !important;
 }
 .pdf-export-mode .weekly-defect-ppm-chart .recharts-wrapper,
 .pdf-export-mode .weekly-defect-ppm-chart-fixed .recharts-wrapper {
   overflow: visible !important;
+}
+/* PDF 전용: 공정불량 막대 차트 플롯 영역 — 은은한 깊이·라운드(주·월·LOT 공통 래퍼 하위) */
+.pdf-export-mode.weekly-defect-chart-capture-target.pdf-chart-as-card .weekly-defect-ppm-chart .recharts-wrapper,
+.pdf-export-mode.weekly-defect-chart-capture-target.pdf-chart-as-card .weekly-defect-ppm-chart-fixed .recharts-wrapper,
+.pdf-export-mode .lot-defect-ppm-pdf-chart-surface .recharts-wrapper {
+  border-radius: 12px !important;
+  border: 1px solid #e2e8f0 !important;
+  background: linear-gradient(180deg, #fbfcfd 0%, #ffffff 62%, #f8fafc 100%) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.88),
+    0 1px 2px rgba(15, 23, 42, 0.05),
+    0 5px 16px rgba(148, 163, 184, 0.1) !important;
+  box-sizing: border-box !important;
+}
+/* PDF 전용: 그리드 — 연한 하늘색 톤(대시보드는 인라인 회색 유지) */
+.pdf-export-mode .weekly-defect-ppm-chart .recharts-cartesian-grid line,
+.pdf-export-mode .weekly-defect-ppm-chart-fixed .recharts-cartesian-grid line,
+.pdf-export-mode .lot-defect-ppm-pdf-chart-surface .recharts-cartesian-grid line {
+  stroke: #bae6fd !important;
+  stroke-opacity: 0.88;
 }
 /* PDF 래스터화 시 차트 텍스트·선윤곽 선명도(확대 시 흐림 완화) */
 .pdf-export-mode .recharts-surface {

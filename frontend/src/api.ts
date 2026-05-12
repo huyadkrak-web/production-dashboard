@@ -118,7 +118,18 @@ export async function postMaster(rows: MasterRow[]): Promise<void> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(rows),
   });
-  if (!res.ok) throw new Error(`POST /master failed: ${res.status}`);
+  if (!res.ok) {
+    let msg = `POST /master failed: ${res.status}`;
+    try {
+      const body = (await res.json()) as { detail?: unknown };
+      const d = body?.detail;
+      if (typeof d === "string" && d.trim() !== "") msg = d;
+      else if (Array.isArray(d) && d.length > 0 && typeof d[0]?.msg === "string") msg = d[0].msg;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(msg);
+  }
 }
 
 export async function getPlan(month: string): Promise<PlanRow[]> {

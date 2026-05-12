@@ -18,6 +18,8 @@ from .db import (
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 BACKUP_DIR = DATA_DIR / "backup"
 
+_MASTER_SAVE_SKIP_LOG = "[기준정보저장차단] 기준정보 미로드 또는 빈 데이터"
+
 
 def _ensure_dirs() -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -111,9 +113,12 @@ def get_master() -> list[dict]:
 
 def save_master(data: list[dict]) -> None:
     rows = [_normalize_master_row_for_save(r) for r in data if isinstance(r, dict)]
+    rows = [r for r in rows if str(r.get("product") or "").strip() and str(r.get("process_code") or "").strip()]
+    if not rows:
+        print(_MASTER_SAVE_SKIP_LOG)
+        return
     supabase_delete_all("master")
-    if rows:
-        supabase_insert("master", rows)
+    supabase_insert("master", rows)
 
 
 def _as_num_plan(value: Any) -> int | float:

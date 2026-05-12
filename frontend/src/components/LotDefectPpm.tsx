@@ -13,6 +13,8 @@ import {
 } from "recharts";
 import { type DefectAutoLotDefectRow, getDefectAutoLotDefects } from "../api";
 import { PDF_CHART_SECTION_TITLE_LOT_PPM } from "../pdfChartSectionTitles";
+import { getDefectColor } from "../defectNameColors";
+import { DefectPdfBarGradientDefs, defectPdfBarFill } from "../defectPdfBarGradients";
 import {
   DEFECT_PPM_COMPOSED_CHART_MARGIN,
   DEFECT_PPM_FIXED_CHART_WIDTH,
@@ -21,26 +23,16 @@ import {
   PDF_ONE_PAGE_INNER_PADDING_PX,
   PDF_ONE_PAGE_ROOT_WIDTH_PX,
   defectPpmBarCategoryGap,
-  defectPpmPlotHeightForWidthPx,
   defectPpmXAxisPaddingPx,
 } from "../weeklyDefectPpmShared";
 import { PdfReportIconBadge } from "./PdfReportIconBadge";
-
-const COLORS = [
-  "#2563eb",
-  "#16a34a",
-  "#f59e0b",
-  "#ef4444",
-  "#8b5cf6",
-  "#06b6d4",
-  "#f97316",
-  "#84cc16",
-];
 const LOT_X_TICK = { fill: "#1e293b", fontSize: 12, fontWeight: 600 };
 const LOT_Y_TICK = { fill: "#1e293b", fontSize: 12, fontWeight: 600 };
 const LOT_AXIS_STROKE = "#64748b";
-/** PDF 고정폭만: 세로 LOT ID 라벨(-90°)용 X축 밴드 높이(기존 값 유지) */
-const LOT_PDF_FIXED_X_AXIS_HEIGHT_PX = 104;
+/** PDF 고정폭: 세로 LOT ID 라벨(-90°)용 X축 밴드 높이(대시보드 96px에 맞춤) */
+const LOT_PDF_FIXED_X_AXIS_HEIGHT_PX = 96;
+/** LOT PDF: 1페이지 카드 본문 가로 전체(주·월 `DEFECT_PPM_FIXED_CHART_WIDTH`보다 넓음) — LOT 라벨·ppm 라벨 겹침 완화 */
+const LOT_PDF_CHART_WIDTH_PX = PDF_ONE_PAGE_CARD_BODY_CONTENT_WIDTH_PX;
 
 type LotDefectPpmProps = {
   forceFixedChartSize?: boolean;
@@ -149,7 +141,7 @@ function LotLegend({
               width: 14,
               height: 14,
               flexShrink: 0,
-              backgroundColor: COLORS[idx % COLORS.length],
+              backgroundColor: getDefectColor(lab),
               borderRadius: 2,
             }}
             aria-hidden
@@ -246,6 +238,9 @@ const LotDefectPpm = React.forwardRef<HTMLDivElement, LotDefectPpmProps>((props,
 
   const hasChart = chartData.length > 0;
 
+  /** PDF 캡처용 클래스(`styles.css`)만 구분. Y축·막대는 대시보드와 동일 linear 스택. */
+  const pdfExportSurface = pdfExportMode || forceFixedChartSize;
+
   /** 월별·주차별과 동일 좌우 여백; X축 LOT 라벨(세로)용으로 bottom만 크게 */
   const lotMargin = useMemo(
     () => ({ ...DEFECT_PPM_COMPOSED_CHART_MARGIN, bottom: 90 } as const),
@@ -255,9 +250,6 @@ const LotDefectPpm = React.forwardRef<HTMLDivElement, LotDefectPpmProps>((props,
   const lotXAxisPadding = useMemo(() => defectPpmXAxisPaddingPx(chartData.length), [chartData.length]);
 
   /** PDF 1페이지 월별 카드 본문(차트) 가로·비율 높이 — `PDF_ONE_PAGE_CARD_BODY_CONTENT_WIDTH_PX` */
-  const pdfOnePageChartW = PDF_ONE_PAGE_CARD_BODY_CONTENT_WIDTH_PX;
-  const pdfOnePageChartH = defectPpmPlotHeightForWidthPx(pdfOnePageChartW);
-
   /** App.tsx `PDF_ONE_PAGE_CHART_PLACEHOLDER_STYLE` — 월별 1페이지 차트 영역과 동일 */
   const lotPdfOnePageChartPlaceholderStyle: React.CSSProperties = {
     width: "100%",
@@ -269,7 +261,7 @@ const LotDefectPpm = React.forwardRef<HTMLDivElement, LotDefectPpmProps>((props,
     backgroundColor: "#f8fafc",
     display: "flex",
     alignItems: "stretch",
-    justifyContent: "center",
+    justifyContent: "flex-start",
     color: "#64748b",
     fontSize: 13,
     boxSizing: "border-box",
@@ -303,6 +295,7 @@ const LotDefectPpm = React.forwardRef<HTMLDivElement, LotDefectPpmProps>((props,
     const xTick = LOT_X_TICK;
     const yTick = LOT_Y_TICK;
     const ppmTopLabelFs = 11;
+    const usePdfBarStyle = Boolean(pdfExportSurface && fixed);
 
     return (
       <ComposedChart
@@ -311,6 +304,12 @@ const LotDefectPpm = React.forwardRef<HTMLDivElement, LotDefectPpmProps>((props,
         barCategoryGap={barCategoryGap}
         {...(fixed && cw != null && ch != null ? { width: cw, height: ch } : {})}
       >
+        <DefectPdfBarGradientDefs
+          enabled={usePdfBarStyle}
+          idPrefix="lotPdf"
+          defectNames={defectNames}
+          subtle
+        />
         <CartesianGrid strokeDasharray="3 3" stroke="#cbd5e1" />
         <XAxis
           dataKey={xDataKey}
@@ -328,7 +327,9 @@ const LotDefectPpm = React.forwardRef<HTMLDivElement, LotDefectPpmProps>((props,
           tick={yTick}
           tickLine={{ stroke: LOT_AXIS_STROKE }}
           axisLine={{ stroke: LOT_AXIS_STROKE }}
-          tickFormatter={(v) => fmt(num(v))}
+          domain={[0, "auto"]}
+          allowDecimals={false}
+          tickFormatter={(v: number) => fmt(num(v))}
         />
         <Tooltip content={<LotTooltip />} />
         {defectNames.map((name, idx) => (
@@ -337,7 +338,7 @@ const LotDefectPpm = React.forwardRef<HTMLDivElement, LotDefectPpmProps>((props,
             dataKey={`d_${idx}`}
             stackId="stack"
             name={name}
-            fill={COLORS[idx % COLORS.length]}
+            fill={defectPdfBarFill(usePdfBarStyle, "lotPdf", idx, name, getDefectColor(name))}
             isAnimationActive={!fixed}
           />
         ))}
@@ -370,7 +371,7 @@ const LotDefectPpm = React.forwardRef<HTMLDivElement, LotDefectPpmProps>((props,
       ref={ref}
       className={[
         forceFixedChartSize ? "" : "card",
-        pdfExportMode ? "pdf-export-mode" : "",
+        pdfExportSurface ? "pdf-export-mode" : "",
       ]
         .filter(Boolean)
         .join(" ")}
@@ -438,17 +439,34 @@ const LotDefectPpm = React.forwardRef<HTMLDivElement, LotDefectPpmProps>((props,
                         alignItems: "stretch",
                         width: "100%",
                         maxWidth: "100%",
+                        minWidth: 0,
                         alignSelf: "stretch",
                         backgroundColor: "#ffffff",
                         borderRadius: 4,
                       }}
                     >
-                      {renderLotComposedChart(
-                        true,
-                        pdfOnePageChartW,
-                        pdfOnePageChartH,
-                        DEFECT_PPM_COMPOSED_CHART_MARGIN,
-                      )}
+                      <div
+                        className={
+                          pdfExportSurface && forceFixedChartSize
+                            ? "weekly-defect-ppm-chart lot-defect-ppm-pdf-chart-surface"
+                            : undefined
+                        }
+                        style={{
+                          width: "100%",
+                          maxWidth: "100%",
+                          minWidth: 0,
+                          flexShrink: 0,
+                          display: "flex",
+                          justifyContent: "flex-start",
+                        }}
+                      >
+                        {renderLotComposedChart(
+                          true,
+                          LOT_PDF_CHART_WIDTH_PX,
+                          DEFECT_PPM_PLOT_HEIGHT,
+                          DEFECT_PPM_COMPOSED_CHART_MARGIN,
+                        )}
+                      </div>
                       {defectNames.length > 0 ? (
                         <LotLegend labels={defectNames} wrapStyle={lotPdfOnePageLegendWrap} />
                       ) : null}

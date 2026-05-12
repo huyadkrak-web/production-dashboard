@@ -35,11 +35,12 @@ import {
   weeklyLinePpmFromTotals,
   type WeeklyRowUi,
 } from "../defectPpmBoardShared";
+import { getDefectColor } from "../defectNameColors";
+import { DefectPdfBarGradientDefs, defectPdfBarFill } from "../defectPdfBarGradients";
 import {
   DEFECT_PPM_COMPOSED_CHART_MARGIN,
   DEFECT_PPM_FIXED_CHART_WIDTH,
   DEFECT_PPM_PLOT_HEIGHT,
-  WEEKLY_DEFECT_STACK_COLORS,
   WEEKLY_TOTAL_PPM_LINE_COLOR,
   buildWeeklyPdfLegendEntries,
   defectPpmBarCategoryGap,
@@ -126,7 +127,7 @@ function WeeklyChartManualLegend({ labels }: { labels: string[] }) {
               width: 14,
               height: 14,
               flexShrink: 0,
-              backgroundColor: WEEKLY_DEFECT_STACK_COLORS[idx % WEEKLY_DEFECT_STACK_COLORS.length],
+              backgroundColor: getDefectColor(lab),
               borderRadius: 2,
             }}
             aria-hidden
@@ -466,10 +467,9 @@ const WeeklyDefectPPM = React.forwardRef<HTMLDivElement, WeeklyDefectPPMProps>(
                 forceFixedChartSize
                   ? {
                       width: DEFECT_PPM_FIXED_CHART_WIDTH,
-                      marginTop: 16,
+                      marginTop: 12,
                       minWidth: DEFECT_PPM_FIXED_CHART_WIDTH,
                       maxWidth: DEFECT_PPM_FIXED_CHART_WIDTH,
-                      minHeight: DEFECT_PPM_PLOT_HEIGHT + 96,
                     }
                   : { width: "100%", minHeight: 480, marginTop: 16 }
               }
@@ -492,6 +492,11 @@ const WeeklyDefectPPM = React.forwardRef<HTMLDivElement, WeeklyDefectPPMProps>(
                       margin={DEFECT_PPM_COMPOSED_CHART_MARGIN}
                       barCategoryGap={barCategoryGap}
                     >
+                      <DefectPdfBarGradientDefs
+                        enabled={pdfExportMode}
+                        idPrefix="wkPdf"
+                        defectNames={chartLabels}
+                      />
                       <CartesianGrid strokeDasharray="3 3" stroke="#cbd5e1" />
                       <XAxis
                         dataKey="week"
@@ -516,7 +521,7 @@ const WeeklyDefectPPM = React.forwardRef<HTMLDivElement, WeeklyDefectPPMProps>(
                           dataKey={chartDataKeyAt(idx)}
                           stackId="stack"
                           name={lab}
-                          fill={WEEKLY_DEFECT_STACK_COLORS[idx % WEEKLY_DEFECT_STACK_COLORS.length]}
+                          fill={defectPdfBarFill(pdfExportMode, "wkPdf", idx, lab, getDefectColor(lab))}
                           isAnimationActive={false}
                         >
                           <LabelList
@@ -560,6 +565,11 @@ const WeeklyDefectPPM = React.forwardRef<HTMLDivElement, WeeklyDefectPPMProps>(
                   <>
                     <ResponsiveContainer width="100%" height={DEFECT_PPM_PLOT_HEIGHT}>
                       <ComposedChart data={chartData} margin={DEFECT_PPM_COMPOSED_CHART_MARGIN} barCategoryGap={barCategoryGap}>
+                        <DefectPdfBarGradientDefs
+                          enabled={pdfExportMode}
+                          idPrefix="wkPdf"
+                          defectNames={chartLabels}
+                        />
                         <CartesianGrid strokeDasharray="3 3" stroke="#cbd5e1" />
                         <XAxis
                           dataKey="week"
@@ -584,7 +594,7 @@ const WeeklyDefectPPM = React.forwardRef<HTMLDivElement, WeeklyDefectPPMProps>(
                             dataKey={chartDataKeyAt(idx)}
                             stackId="stack"
                             name={lab}
-                            fill={WEEKLY_DEFECT_STACK_COLORS[idx % WEEKLY_DEFECT_STACK_COLORS.length]}
+                            fill={defectPdfBarFill(pdfExportMode, "wkPdf", idx, lab, getDefectColor(lab))}
                             isAnimationActive={chartAnimOn}
                           >
                             <LabelList

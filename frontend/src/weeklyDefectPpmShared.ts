@@ -1,3 +1,5 @@
+import { DEFECT_TOTAL_PPM_LINE_COLOR, getDefectColor } from "./defectNameColors";
+
 /** 주차별 불량 PPM 차트·PDF 범례에서 공유하는 팔레트·빌더 */
 
 /** PDF·고정폭 캡처용 캔버스 너비 — 주차·월별 동일 */
@@ -35,6 +37,7 @@ export function defectPpmPlotHeightForWidthPx(widthPx: number): number {
   return Math.round(DEFECT_PPM_PLOT_HEIGHT * (widthPx / DEFECT_PPM_FIXED_CHART_WIDTH));
 }
 
+/** @deprecated 막대 색은 `getDefectColor(불량명)` 사용. 하위 호환·문서용으로만 유지 */
 export const WEEKLY_DEFECT_STACK_COLORS = [
   "#4E79A7",
   "#76B7B2",
@@ -47,7 +50,8 @@ export const WEEKLY_DEFECT_STACK_COLORS = [
   "#BAB0AC",
 ];
 
-export const WEEKLY_TOTAL_PPM_LINE_COLOR = "#2F5597";
+/** 총 불량률(ppm) 라인 — `defectNameColors.DEFECT_TOTAL_PPM_LINE_COLOR`과 동일(막대색과 구분) */
+export const WEEKLY_TOTAL_PPM_LINE_COLOR = DEFECT_TOTAL_PPM_LINE_COLOR;
 
 export type WeeklyPdfLegendEntry = {
   label: string;
@@ -104,9 +108,9 @@ export function getDefectPpmBarLayoutOptions(categoryCount: number) {
 export function buildWeeklyPdfLegendEntries(
   orderedDefectNames: readonly string[],
 ): readonly WeeklyPdfLegendEntry[] {
-  const bars: WeeklyPdfLegendEntry[] = orderedDefectNames.map((label, i) => ({
+  const bars: WeeklyPdfLegendEntry[] = orderedDefectNames.map((label) => ({
     label,
-    color: WEEKLY_DEFECT_STACK_COLORS[i % WEEKLY_DEFECT_STACK_COLORS.length],
+    color: getDefectColor(label),
     variant: "bar",
   }));
   return [

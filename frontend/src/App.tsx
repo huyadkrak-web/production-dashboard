@@ -1278,6 +1278,28 @@ function buildPlanRowsFromMonthlyWorksheet(
   };
 }
 
+/** 기준정보 저장 API용 payload — 공정코드·제품(product) 비어 있으면 제외 */
+function buildMasterSavePayload(masterRenderRows: MasterRow[]): MasterRow[] {
+  return masterRenderRows
+    .map((row) => ({
+      product: String(row.product ?? "").trim(),
+      process_code: String(row.process_code ?? "").trim(),
+      process_name: String(row.process_name ?? "").trim(),
+      process_group: String(row.process_group ?? "").trim(),
+      is_assembly: String(row.is_assembly ?? "N")
+        .trim()
+        .toUpperCase(),
+      display_order: Number(row.display_order) || 0,
+      is_active: Boolean(row.is_active),
+    }))
+    .filter((row) => row.process_code !== "" && row.product !== "");
+}
+
+function warnMasterSaveBlocked(): void {
+  console.warn("[기준정보저장차단] 기준정보 미로드 또는 빈 데이터");
+  window.alert("기준정보를 먼저 불러온 후 저장해 주세요.");
+}
+
 export default function App() {
   const [baseDate, setBaseDate] = useState<string>(() => {
     const d = new Date();
@@ -1291,6 +1313,8 @@ export default function App() {
   const [codeDefectFile, setCodeDefectFile] = useState<File | null>(null);
   const [masterRows, setMasterRows] = useState<MasterRow[]>([]);
   const masterRenderRows = masterRows;
+  /** `불러오기` 성공 시에만 true — 미로드 상태 저장·빈 payload 덮어쓰기 방지 */
+  const [masterLoadSucceeded, setMasterLoadSucceeded] = useState(false);
   const [planRows, setPlanRows] = useState<PlanRow[]>([]);
   const [planMonth, setPlanMonth] = useState<string>(() => {
     const d = new Date();
@@ -1557,28 +1581,25 @@ export default function App() {
 
       console.log("[master load mapped]", mappedRows.length, mappedRows);
       setMasterRows(mappedRows);
+      setMasterLoadSucceeded(true);
     } catch (err) {
+      setMasterLoadSucceeded(false);
       setError(err instanceof Error ? err.message : String(err));
     }
   }
 
   async function saveMaster() {
     setError(null);
+    if (!masterLoadSucceeded) {
+      warnMasterSaveBlocked();
+      return;
+    }
+    const payload = buildMasterSavePayload(masterRenderRows);
+    if (payload.length === 0) {
+      warnMasterSaveBlocked();
+      return;
+    }
     try {
-      const payload = masterRenderRows
-        .map((row) => ({
-          product: String(row.product ?? "").trim(),
-          process_code: String(row.process_code ?? "").trim(),
-          process_name: String(row.process_name ?? "").trim(),
-          process_group: String(row.process_group ?? "").trim(),
-          is_assembly: String(row.is_assembly ?? "N")
-            .trim()
-            .toUpperCase(),
-          display_order: Number(row.display_order) || 0,
-          is_active: Boolean(row.is_active),
-        }))
-        .filter((row) => row.process_code !== "");
-
       console.log("[master save] payload", {
         count: payload.length,
         rows: payload,
@@ -1593,6 +1614,11 @@ export default function App() {
   useEffect(() => {
     console.log("[master render rows]", masterRenderRows.length, masterRenderRows);
   }, [masterRenderRows]);
+
+  const canSaveMaster = useMemo(
+    () => masterLoadSucceeded && buildMasterSavePayload(masterRenderRows).length > 0,
+    [masterLoadSucceeded, masterRenderRows],
+  );
 
   function addMasterRow() {
     setMasterRows((prev) => [
@@ -2670,7 +2696,7 @@ export default function App() {
           <button type="button" className="button" onClick={loadMaster}>
             불러오기
           </button>
-          <button type="button" className="button" onClick={saveMaster}>
+          <button type="button" className="button" disabled={!canSaveMaster} onClick={saveMaster}>
             저장
           </button>
           <button type="button" className="button" onClick={addMasterRow}>
