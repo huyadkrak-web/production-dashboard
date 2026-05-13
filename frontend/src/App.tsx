@@ -1079,6 +1079,98 @@ function isLikelyProcessCode(s: string) {
   return hasLetter && hasDigit;
 }
 
+/** 엑셀 11행(1-based) — 월 목표 문자열 행 */
+const MONTHLY_PLAN_GOAL_SHEET_ROW_IDX = 10;
+
+function getPlanWorksheetCellText(sheet: Record<string, any>, r: number, c: number): string {
+  const addr = XLSX.utils.encode_cell({ r, c });
+  const cell = sheet[addr];
+  if (!cell) return "";
+  const w = cell.w != null && String(cell.w).trim() !== "" ? String(cell.w).trim() : "";
+  if (w) return w;
+  const v = cell.v;
+  if (v != null && v !== "") {
+    if (typeof v === "number" && Number.isFinite(v)) return String(v);
+    return String(v).trim();
+  }
+  return "";
+}
+
+function normalizeMonthlyPlanGoalCellText(raw: string): string {
+  let s = String(raw ?? "").trim();
+  if (!s) return "";
+  try {
+    s = s.normalize("NFKC");
+  } catch {
+    /* ignore */
+  }
+  return s.replace(/\s+/gu, " ").trim();
+}
+
+/** 셀 안 첫 `N월`(공백 허용, 1~12) */
+function parseMonthNumberFromGoalCellText(normalized: string): number | null {
+  const m = normalized.match(/(\d{1,2})\s*월/u);
+  if (!m) return null;
+  const n = Number(m[1]);
+  if (!Number.isFinite(n) || n < 1 || n > 12) return null;
+  return n;
+}
+
+/** `N월` 접두·`완료` 접미 제거 후 목표 본문(대소문자·공백은 원문 유지) */
+function extractMonthlyGoalBodyAfterMonth(normalized: string, monthNum: number): string {
+  const re = new RegExp(`^\\s*0*${monthNum}\\s*월\\s*`, "iu");
+  let s = normalized.replace(re, "").trim();
+  s = s.replace(/\s*완료\s*$/iu, "").trim();
+  return s;
+}
+
+/**
+ * 월간플랜 11행 전체 스캔: `N월` 포함 셀 → 월 번호별 정규화 문자열(동일 월 중복 시 먼저 나온 셀 유지).
+ */
+function scanMonthlyPlanSheetRow11ForMonthGoals(worksheet: unknown): Partial<Record<number, string>> {
+  const sheet = worksheet as Record<string, any>;
+  const ref = sheet["!ref"] as string | undefined;
+  if (!ref) return {};
+  const range = XLSX.utils.decode_range(ref);
+  const r = MONTHLY_PLAN_GOAL_SHEET_ROW_IDX;
+  if (r > range.e.r) return {};
+  const out: Partial<Record<number, string>> = {};
+  for (let c = 0; c <= range.e.c; c++) {
+    const rawCell = getPlanWorksheetCellText(sheet, r, c);
+    if (!rawCell) continue;
+    const norm = normalizeMonthlyPlanGoalCellText(rawCell);
+    if (!norm) continue;
+    const monthNum = parseMonthNumberFromGoalCellText(norm);
+    if (monthNum == null) continue;
+    if (out[monthNum] != null && String(out[monthNum]).trim() !== "") continue;
+    out[monthNum] = norm;
+  }
+  return out;
+}
+
+/** 배너 문구 표시 전용 접미 제거 — 스캔·셀 원문 상태는 변경하지 않음 */
+function stripMonthlyGoalDisplayTrailingNoise(s: string): string {
+  return String(s ?? "")
+    .replace(/\s*시작\s*$/iu, "")
+    .trim();
+}
+
+function formatSelectedMonthPlanGoalBanner(
+  planMonthKey: string,
+  goals: Partial<Record<number, string>>,
+): string | null {
+  const m = planMonthKey.match(/^(\d{4})-(\d{2})$/u);
+  if (!m) return null;
+  const monthNum = Number(m[2]);
+  if (!Number.isFinite(monthNum) || monthNum < 1 || monthNum > 12) return null;
+  const raw = goals[monthNum];
+  if (!raw || !String(raw).trim()) return null;
+  const norm = normalizeMonthlyPlanGoalCellText(String(raw));
+  const body = stripMonthlyGoalDisplayTrailingNoise(extractMonthlyGoalBodyAfterMonth(norm, monthNum));
+  if (body) return `${monthNum}월 목표 ${body}`;
+  return `월 목표: ${stripMonthlyGoalDisplayTrailingNoise(norm)}`;
+}
+
 /** 월간플랜 수치 추적용(존재하는 행만 로그). */
 const MONTHLY_PLAN_TRACE_CODES = new Set(["FCD01", "FDA01", "FWB01"]);
 
@@ -1331,6 +1423,10 @@ export default function App() {
     null,
   );
   const [uploadedPlanFileName, setUploadedPlanFileName] = useState<string | null>(null);
+  /** 월간플랜 11행에서 읽은 월별 목표 문자열(업로드 시트 기준, 선택 월과 조합해 카드에 표시) */
+  const [uploadedPlanMonthGoals, setUploadedPlanMonthGoals] = useState<
+    Partial<Record<number, string>>
+  >({});
   const [planTableNote, setPlanTableNote] = useState("");
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [data, setData] = useState<ComputeResponse | null>(null);
@@ -1717,6 +1813,19 @@ export default function App() {
     setPlanRows(rows);
     setPlanTableNote(note);
   }, [uploadedPlanSheetWorksheet, baseDate, masterRows]);
+
+  useEffect(() => {
+    if (!uploadedPlanSheetWorksheet) {
+      setUploadedPlanMonthGoals({});
+      return;
+    }
+    setUploadedPlanMonthGoals(scanMonthlyPlanSheetRow11ForMonthGoals(uploadedPlanSheetWorksheet));
+  }, [uploadedPlanSheetWorksheet]);
+
+  const planMonthGoalBanner = useMemo(
+    () => formatSelectedMonthPlanGoalBanner(planMonth, uploadedPlanMonthGoals),
+    [planMonth, uploadedPlanMonthGoals],
+  );
 
   const prodCols = useMemo(() => {
     // <input type="date"> → "YYYY-MM-DD". 타임존 이슈 없이 월만 사용.
@@ -2785,7 +2894,16 @@ export default function App() {
       <section className="card">
         <h2 className="cardTitle">월간플랜</h2>
         <div style={PLAN_MONTH_CARD_TOP}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              flexShrink: 0,
+              flexWrap: "nowrap",
+              minWidth: 0,
+            }}
+          >
             <label
               htmlFor="app-plan-month"
               className="label"
@@ -2800,6 +2918,24 @@ export default function App() {
               onChange={(e) => setPlanMonth(e.target.value)}
               style={{ width: "10.5rem", maxWidth: "11rem", flexShrink: 0 }}
             />
+            {planMonthGoalBanner ? (
+              <span
+                className="hint"
+                style={{
+                  whiteSpace: "nowrap",
+                  margin: 0,
+                  color: "var(--muted)",
+                  fontWeight: 500,
+                  flexShrink: 1,
+                  minWidth: 0,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+                title={planMonthGoalBanner}
+              >
+                {planMonthGoalBanner}
+              </span>
+            ) : null}
           </div>
           <div
             style={{
