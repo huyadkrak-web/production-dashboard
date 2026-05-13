@@ -4,7 +4,7 @@
  */
 
 /** 총 불량률(ppm) 라인 — 막대 팔레트와 겹치지 않게 별도 유지 */
-export const DEFECT_TOTAL_PPM_LINE_COLOR = "#2C5AA0";
+export const DEFECT_TOTAL_PPM_LINE_COLOR = "#335B99";
 
 /** 비교·키용 정규화: trim, 연속 공백 축소, NFKC, 영문 소문자 */
 export function normalizeDefectNameForColor(raw: string): string {
@@ -25,46 +25,43 @@ function normalizeHex(hex: string): string {
     .toUpperCase();
 }
 
-/** 주요 불량명 고정 색(주차·월·LOT·범례·PDF 공통) */
+/** 주요 불량명 고정 색(주차·월·LOT·범례·PDF·대시보드 공통, 최종 palette) */
 export const DEFECT_COLOR_MAP: Readonly<Record<string, string>> = {
-  "chip crack": "#6C5CE7",
-  "pkg broken": "#3498DB",
-  "die shift": "#00B894",
-  "pcb dent": "#E67E22",
-  "pcb scratch": "#E84393",
-  "원자재 불량": "#8E6E53",
-  "lead open": "#F1C40F",
-  "pkg 낙석": "#9B59B6",
-  "단자 scratch": "#5DADE2",
-  "부풀음": "#27AE60",
-  "pad 오염": "#E74C3C",
-  "pcb 찢어짐": "#1ABC9C",
-  "단자 오염": "#FD79A8",
+  "chip crack": "#8878CD",
+  "pkg broken": "#4F9AD6",
+  "die shift": "#43B581",
+  "pcb dent": "#DF75D6",
+  "pcb scratch": "#D96BA0",
+  "원자재 불량": "#9C8C7A",
+  "lead open": "#5C5188",
+  "pkg 낙석": "#6478FF",
+  "단자 scratch": "#78D3F8",
+  "부풀음": "#65789B",
+  "pcb 찢어짐": "#6464CD",
+  "pad 오염": "#B232B2",
+  "단자 오염": "#C2CBD5",
 };
 
-/** 고정 맵에 없는 불량명 — 파스텔·선명색 혼합, 결정적 배정 */
-export const DEFECT_FALLBACK_PALETTE: readonly string[] = [
-  "#2E86DE",
-  "#F39C12",
-  "#16A085",
-  "#D35400",
-  "#7D3C98",
-  "#C0392B",
-  "#00CEC9",
-  "#A29BFE",
-  "#FAB1A0",
-  "#55EFC4",
-  "#74B9FF",
-  "#FFEAA7",
-  "#E17055",
-  "#6AB04C",
-  "#BE2EDD",
-  "#FF7675",
-  "#0984E3",
-  "#FDCB6E",
-  "#00B894",
-  "#E84393",
+/** 고정 맵에 없는 불량명 — 최종 fallback(불투명 solid, `getDefectColor` 순환) */
+export const EXTRA_DEFECT_COLORS: readonly string[] = [
+  "#5B8FF9",
+  "#61DDAA",
+  "#65789B",
+  "#F6BD16",
+  "#7262FD",
+  "#78D3F8",
+  "#9661BC",
+  "#F6903D",
+  "#008685",
+  "#F78BB4",
+  "#C2CBD5",
+  "#6DC8EC",
+  "#9270CA",
+  "#FF9D4D",
+  "#269A99",
 ];
+
+export const DEFECT_FALLBACK_PALETTE: readonly string[] = EXTRA_DEFECT_COLORS;
 
 const RESERVED_HEX_FOR_FALLBACK: ReadonlySet<string> = (() => {
   const s = new Set<string>();
@@ -112,7 +109,7 @@ function pickFallbackColor(normalizedKey: string): string {
 
 /**
  * 불량명에 대한 차트·범례·막대 fill 색상(hex).
- * `DEFECT_COLOR_MAP` → 없으면 `DEFECT_FALLBACK_PALETTE`에서 해시 기준 선택(Math.random 없음).
+ * `DEFECT_COLOR_MAP` → 없으면 `EXTRA_DEFECT_COLORS` / `DEFECT_FALLBACK_PALETTE`에서 해시 기준 선택(Math.random 없음).
  */
 export function getDefectColor(defectName: string): string {
   const key = normalizeDefectNameForColor(defectName);

@@ -48,7 +48,8 @@ export function DefectPdfBarGradientDefs({
   subtle = false,
 }: DefectPdfBarGradientDefsProps): React.ReactElement | null {
   if (!enabled) return null;
-  const topMix = subtle ? 0.06 : 0.13;
+  /** PDF 막대 상단만 흰색 혼합 5~10%(대시보드는 solid 유지) */
+  const topMix = subtle ? 0.05 : 0.08;
   return (
     <defs>
       {defectNames.map((name, idx) => {
