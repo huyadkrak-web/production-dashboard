@@ -39,7 +39,9 @@ export const DEFECT_COLOR_MAP: Readonly<Record<string, string>> = {
   "부풀음": "#65789B",
   "pcb 찢어짐": "#6464CD",
   "pad 오염": "#B232B2",
+  "pcb 오염": "#6E6E6E",
   "단자 오염": "#C2CBD5",
+  "pkg crack": "#000000",
 };
 
 /** 고정 맵에 없는 불량명 — 최종 fallback(불투명 solid, `getDefectColor` 순환) */

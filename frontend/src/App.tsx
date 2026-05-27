@@ -2744,6 +2744,7 @@ export default function App() {
             type="button"
             className="button"
             disabled={!data}
+            data-testid="download-excel-button"
             onClick={() => data && downloadExcel(data)}
           >
             엑셀 다운로드
@@ -2752,6 +2753,7 @@ export default function App() {
             type="button"
             className="button"
             disabled={!data}
+            data-testid="download-pdf-button"
             onClick={() => data && downloadPdf(data.meta.base_date)}
           >
             PDF 다운로드
@@ -2792,6 +2794,7 @@ export default function App() {
               id="app-base-date"
               className="app-base-date-input"
               type="date"
+              data-testid="report-date-input"
               value={baseDate}
               onChange={(e) => setBaseDate(e.target.value)}
               required
@@ -2802,13 +2805,19 @@ export default function App() {
           className="actions"
           style={{ marginBottom: 8, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10 }}
         >
-          <button type="button" className="button" onClick={loadMaster}>
+          <button type="button" className="button" data-testid="load-master-button" onClick={loadMaster}>
             불러오기
           </button>
-          <button type="button" className="button" disabled={!canSaveMaster} onClick={saveMaster}>
+          <button
+            type="button"
+            className="button"
+            disabled={!canSaveMaster}
+            data-testid="save-master-button"
+            onClick={saveMaster}
+          >
             저장
           </button>
-          <button type="button" className="button" onClick={addMasterRow}>
+          <button type="button" className="button" data-testid="add-master-row-button" onClick={addMasterRow}>
             행 추가
           </button>
         </div>
@@ -2914,6 +2923,7 @@ export default function App() {
             <input
               id="app-plan-month"
               type="month"
+              data-testid="monthly-plan-month-input"
               value={planMonth}
               onChange={(e) => setPlanMonth(e.target.value)}
               style={{ width: "10.5rem", maxWidth: "11rem", flexShrink: 0 }}
@@ -2962,6 +2972,7 @@ export default function App() {
               <input
                 type="file"
                 accept=".xlsx,.xls"
+                data-testid="monthly-plan-file"
                 onChange={(e) => onUploadPlanDefectExcel(e.target.files?.[0] ?? null)}
                 style={{ width: "100%", minWidth: 0, boxSizing: "border-box" }}
               />
@@ -3127,6 +3138,7 @@ export default function App() {
                   id="app-today-file"
                   type="file"
                   accept=".xlsx,.xls"
+                  data-testid="work-report-file"
                   onChange={(e) => setTodayFile(e.target.files?.[0] ?? null)}
                   required
                   style={{
@@ -3156,6 +3168,7 @@ export default function App() {
                   id="app-code-defect-file"
                   type="file"
                   accept=".xlsx,.xls"
+                  data-testid="defect-report-file"
                   onChange={(e) => setCodeDefectFile(e.target.files?.[0] ?? null)}
                   style={{
                     width: "100%",
@@ -3170,6 +3183,7 @@ export default function App() {
             className="button"
             type="submit"
             disabled={!canSubmit}
+            data-testid="run-production-report-button"
             style={{ alignSelf: "flex-end", marginTop: 8 }}
           >
             {loading ? "계산 중..." : "생산일보 계산"}
@@ -3208,6 +3222,7 @@ export default function App() {
                 <select
                   id="app-dashboard-product"
                   className="app-base-date-input"
+                  data-testid="current-product-select"
                   value={resolvedDashboardProduct}
                   onChange={(e) => setDashboardSelectedProduct(e.target.value)}
                   style={{ minWidth: 160, maxWidth: "100%" }}
@@ -3716,7 +3731,9 @@ export default function App() {
                               height: 14,
                               flexShrink: 0,
                               backgroundColor: e.color,
+                              border: "1px solid #cbd5e1",
                               borderRadius: 2,
+                              boxSizing: "border-box",
                             }}
                           />
                         )}
@@ -3787,7 +3804,9 @@ export default function App() {
                               height: 14,
                               flexShrink: 0,
                               backgroundColor: e.color,
+                              border: "1px solid #cbd5e1",
                               borderRadius: 2,
+                              boxSizing: "border-box",
                             }}
                           />
                         )}

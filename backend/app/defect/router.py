@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
+from pydantic import BaseModel, Field
 
 from .calculator import (
     compute_lot_defect_ppm_from_shipments,
@@ -12,6 +13,8 @@ from .calculator import (
 from .parser import _clean_lot, parse_defect, parse_shipment, parse_work, print_defect_shipment_lot_match_report
 from .shipment_store import (
     clear_shipment,
+    delete_shipment_by_move_date,
+    fix_shipment_move_dates_bulk,
     get_shipment_move_date_rollups,
     get_shipment_summary,
     load_shipment,
@@ -29,6 +32,27 @@ from .storage import (
 router = APIRouter(prefix="/defect-auto", tags=["defect-auto"])
 _latest_lot_defects: list[dict] = []
 _latest_lot_warning: str = ""
+
+
+class ShipmentFixMoveDateBody(BaseModel):
+    """저장된 출하의 ``move_date``를 일괄 보정할 때 사용합니다(전체 삭제 없음)."""
+
+    from_date: str = Field(..., description="YYYY-MM-DD")
+    to_date: str = Field(..., description="YYYY-MM-DD")
+    expected_moved_rows: int | None = Field(
+        default=None,
+        description="from_date에 있는 행 수와 일치해야 PATCH 진행(검증 생략 시 null)",
+    )
+    expected_moved_total_qty: int | None = Field(
+        default=None,
+        description="from_date 이동수량 합과 일치해야 PATCH 진행(검증 생략 시 null)",
+    )
+
+
+class ShipmentDeleteByMoveDateBody(BaseModel):
+    """선택한 이동일자(``move_date``)의 출하 행만 부분 삭제 — 다른 날짜는 보존."""
+
+    move_date: str = Field(..., description="YYYY-MM-DD — 이 날짜와 정확히 일치하는 행만 삭제")
 
 
 @router.post("/reset")
@@ -56,15 +80,60 @@ async def defect_auto_shipment(
     try:
         shipment_bytes = await shipment_file.read()
         df = parse_shipment(shipment_bytes)
-        summary = save_shipment(df)
+        save_result = save_shipment(df)
         parse_report = df.attrs.get("shipment_parse_report")
-        dup = isinstance(summary, dict) and summary.get("duplicate_skipped") is True
+        dup = bool(save_result.get("duplicate_skipped"))
+        inserted = int(save_result.get("inserted_rows") or 0)
+        if dup:
+            msg = "shipment duplicate skipped"
+        elif inserted > 0:
+            msg = "shipment saved"
+        else:
+            msg = "shipment saved"
         return {
             "status": "ok",
-            "message": "shipment duplicate skipped" if dup else "shipment saved",
-            "shipment_summary": summary,
+            "message": msg,
+            "duplicate_skipped": dup,
+            "inserted_rows": int(save_result.get("inserted_rows") or 0),
+            "skipped_rows": int(save_result.get("skipped_rows") or 0),
+            "inserted_qty": int(save_result.get("inserted_qty") or 0),
+            "skipped_qty": int(save_result.get("skipped_qty") or 0),
+            "shipment_summary": save_result.get("shipment_summary"),
             "shipment_parse_report": parse_report,
         }
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.post("/shipment-fix-move-date")
+def defect_auto_shipment_fix_move_date(body: ShipmentFixMoveDateBody) -> dict:
+    """저장된 출하 중 ``from_date``인 행만 ``to_date``로 PATCH(전체 삭제·재업로드 없음)."""
+    try:
+        result = fix_shipment_move_dates_bulk(
+            body.from_date,
+            body.to_date,
+            expected_moved_rows=body.expected_moved_rows,
+            expected_moved_total_qty=body.expected_moved_total_qty,
+        )
+        return {"status": "ok", **result}
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@router.post("/shipment-delete-move-date")
+def defect_auto_shipment_delete_move_date(body: ShipmentDeleteByMoveDateBody) -> dict:
+    """선택한 이동일자(``move_date``)의 출하 행만 안전하게 부분 삭제(다른 날짜는 보존).
+
+    전체 초기화(``/defect-auto/reset``)와 분리된 경로이며, 잘못 올라간 단일 일자의
+    출하만 회수할 때 사용합니다.
+    """
+    try:
+        result = delete_shipment_by_move_date(body.move_date)
+        return {"status": "ok", **result}
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
     except Exception as e:

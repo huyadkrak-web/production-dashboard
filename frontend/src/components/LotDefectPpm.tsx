@@ -26,6 +26,19 @@ import {
   defectPpmXAxisPaddingPx,
 } from "../weeklyDefectPpmShared";
 import { PdfReportIconBadge } from "./PdfReportIconBadge";
+/** LOT별 그래프·PDF에 표시할 최대 LOT 수(저장/API 데이터는 그대로, 화면만 제한) */
+const LOT_CHART_VISIBLE_LIMIT = 50;
+const LOT_CHART_VISIBLE_HINT_LABEL = "최근 50 LOT 기준";
+
+const lotChartVisibleHintStyle: React.CSSProperties = {
+  fontSize: 11,
+  fontWeight: 500,
+  color: "var(--muted, #64748b)",
+  lineHeight: 1.3,
+  whiteSpace: "nowrap",
+  flexShrink: 0,
+};
+
 const LOT_X_TICK = { fill: "#1e293b", fontSize: 12, fontWeight: 600 };
 const LOT_Y_TICK = { fill: "#1e293b", fontSize: 12, fontWeight: 600 };
 const LOT_AXIS_STROKE = "#64748b";
@@ -55,6 +68,45 @@ function shortenLotId(id: string): string {
   const t = String(id ?? "");
   if (t.length <= 14) return t;
   return `${t.slice(0, 6)}...${t.slice(-4)}`;
+}
+
+function isValidLotRow(r: DefectAutoLotDefectRow): boolean {
+  return String(r.lot_id ?? "").trim().toUpperCase() !== "LOTID";
+}
+
+/** 출하 move_date(YYYY-MM-DD) 정렬 키 — 파싱 실패 시 0(앞쪽) */
+function moveDateSortKey(moveDate: string): number {
+  const s = String(moveDate ?? "").trim().slice(0, 10);
+  const t = Date.parse(`${s}T00:00:00`);
+  return Number.isFinite(t) ? t : 0;
+}
+
+/** move_date 오름차순 → 동일 날짜는 API 순서 유지 → 최신 N개만 */
+function lotRowsForChartDisplay(
+  rows: readonly DefectAutoLotDefectRow[],
+  limit: number = LOT_CHART_VISIBLE_LIMIT,
+): DefectAutoLotDefectRow[] {
+  const valid = rows.filter(isValidLotRow);
+  const indexed = valid.map((r, apiIndex) => ({ r, apiIndex }));
+  indexed.sort((a, b) => {
+    const d = moveDateSortKey(a.r.move_date ?? "") - moveDateSortKey(b.r.move_date ?? "");
+    if (d !== 0) return d;
+    return a.apiIndex - b.apiIndex;
+  });
+  const sorted = indexed.map((x) => x.r);
+  const visible =
+    sorted.length > limit ? sorted.slice(-limit) : sorted;
+  const dropped = Math.max(0, valid.length - visible.length);
+  console.log(
+    "[lot_chart_visible_limit]",
+    JSON.stringify({
+      total_rows: valid.length,
+      visible_rows: visible.length,
+      limit,
+      dropped_rows: dropped,
+    }),
+  );
+  return visible;
 }
 
 type TooltipPayload = {
@@ -104,6 +156,10 @@ function LotTooltip({
   );
 }
 
+function LotChartVisibleHint() {
+  return <span className="hint" style={lotChartVisibleHintStyle}>{LOT_CHART_VISIBLE_HINT_LABEL}</span>;
+}
+
 function LotLegend({
   labels,
   wrapStyle,
@@ -142,7 +198,9 @@ function LotLegend({
               height: 14,
               flexShrink: 0,
               backgroundColor: getDefectColor(lab),
+              border: "1px solid #cbd5e1",
               borderRadius: 2,
+              boxSizing: "border-box",
             }}
             aria-hidden
           />
@@ -190,23 +248,21 @@ const LotDefectPpm = React.forwardRef<HTMLDivElement, LotDefectPpmProps>((props,
     void load();
   }, [autoReloadToken]);
 
+  const visibleRows = useMemo(() => lotRowsForChartDisplay(rows), [rows]);
+
   const defectNames = useMemo(() => {
     const set = new Set<string>();
-    rows
-      .filter((r) => String(r.lot_id ?? "").trim().toUpperCase() !== "LOTID")
-      .forEach((r) => {
+    visibleRows.forEach((r) => {
       (r.defects ?? []).forEach((d) => {
         const n = String(d.name ?? "").trim();
         if (n) set.add(n);
       });
-      });
+    });
     return [...set];
-  }, [rows]);
+  }, [visibleRows]);
 
   const chartData = useMemo(() => {
-    return rows
-      .filter((r) => String(r.lot_id ?? "").trim().toUpperCase() !== "LOTID")
-      .map((r) => {
+    return visibleRows.map((r) => {
       const base: Record<string, unknown> = {
         lot_id: String(r.lot_id ?? ""),
         lot_label: shortenLotId(String(r.lot_id ?? "")),
@@ -228,8 +284,8 @@ const LotDefectPpm = React.forwardRef<HTMLDivElement, LotDefectPpmProps>((props,
         base[`d_${idx}`] = map.get(name) ?? 0;
       });
       return base;
-      });
-  }, [rows, defectNames]);
+    });
+  }, [visibleRows, defectNames]);
 
   useEffect(() => {
     console.log("[lot_chart_data_count]", chartData.length);
@@ -378,7 +434,21 @@ const LotDefectPpm = React.forwardRef<HTMLDivElement, LotDefectPpmProps>((props,
       style={{ minWidth: 0, maxWidth: "100%", width: "100%", boxSizing: "border-box" }}
     >
       {!forceFixedChartSize ? (
-        <h2 className="cardTitle">{PDF_CHART_SECTION_TITLE_LOT_PPM}</h2>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "baseline",
+            justifyContent: "space-between",
+            gap: 12,
+            flexWrap: "wrap",
+            width: "100%",
+          }}
+        >
+          <h2 className="cardTitle" style={{ marginBottom: 0 }}>
+            {PDF_CHART_SECTION_TITLE_LOT_PPM}
+          </h2>
+          {hasChart ? <LotChartVisibleHint /> : null}
+        </div>
       ) : null}
       {!forceFixedChartSize ? (
         <div
@@ -423,13 +493,25 @@ const LotDefectPpm = React.forwardRef<HTMLDivElement, LotDefectPpmProps>((props,
                   marginTop: 0,
                 }}
               >
-                <h2
-                  className="cardTitle pdf-report-section-title pdf-one-page-chart-title"
-                  style={{ display: "flex", alignItems: "center", gap: 10 }}
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 12,
+                    flexWrap: "wrap",
+                    width: "100%",
+                  }}
                 >
-                  <PdfReportIconBadge Icon={ChartColumn} title={PDF_CHART_SECTION_TITLE_LOT_PPM} />
-                  <span className="pdf-report-section-title-text">{PDF_CHART_SECTION_TITLE_LOT_PPM}</span>
-                </h2>
+                  <h2
+                    className="cardTitle pdf-report-section-title pdf-one-page-chart-title"
+                    style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 0, flex: "1 1 auto" }}
+                  >
+                    <PdfReportIconBadge Icon={ChartColumn} title={PDF_CHART_SECTION_TITLE_LOT_PPM} />
+                    <span className="pdf-report-section-title-text">{PDF_CHART_SECTION_TITLE_LOT_PPM}</span>
+                  </h2>
+                  {hasChart ? <LotChartVisibleHint /> : null}
+                </div>
                 <div style={lotPdfOnePageChartPlaceholderStyle}>
                   {hasChart ? (
                     <div

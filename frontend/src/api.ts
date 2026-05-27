@@ -193,13 +193,7 @@ export async function postMonthlyDefectPpm(rows: MonthlyDefectPpmRow[]): Promise
 }
 
 /** POST /defect-auto/shipment — 공장 받기(출하) 엑셀 누적 저장 */
-export async function uploadDefectShipment(file: File): Promise<{
-  status: string;
-  message: string;
-  shipment_summary: DefectAutoShipmentSummary | null;
-  /** 서버 출하 파싱 진단(시트명·제외 행 등). 없을 수 있음 */
-  shipment_parse_report?: unknown;
-}> {
+export async function uploadDefectShipment(file: File): Promise<DefectAutoShipmentUploadResult> {
   const fd = new FormData();
   fd.append("shipment_file", file);
   const res = await fetch(`${API_BASE}/defect-auto/shipment`, {
@@ -210,11 +204,71 @@ export async function uploadDefectShipment(file: File): Promise<{
     const text = await res.text().catch(() => "");
     throw new Error(text || res.statusText);
   }
+  return res.json() as Promise<DefectAutoShipmentUploadResult>;
+}
+
+/** POST /defect-auto/shipment-fix-move-date — 저장된 출하의 move_date 일괄 보정(전체 삭제 없음) */
+export async function postDefectAutoShipmentFixMoveDate(body: {
+  from_date: string;
+  to_date: string;
+  expected_moved_rows?: number | null;
+  expected_moved_total_qty?: number | null;
+}): Promise<Record<string, unknown>> {
+  const res = await fetch(`${API_BASE}/defect-auto/shipment-fix-move-date`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      from_date: body.from_date,
+      to_date: body.to_date,
+      expected_moved_rows: body.expected_moved_rows ?? null,
+      expected_moved_total_qty: body.expected_moved_total_qty ?? null,
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(text || res.statusText);
+  }
+  return res.json() as Promise<Record<string, unknown>>;
+}
+
+/**
+ * POST /defect-auto/shipment-delete-move-date — 선택한 이동일자(move_date) 출하 행만 부분 삭제.
+ * 다른 날짜의 출하 데이터는 보존되며, 전체 초기화(/defect-auto/reset)와는 별개 경로입니다.
+ */
+export async function postDefectAutoShipmentDeleteMoveDate(body: {
+  move_date: string;
+}): Promise<{
+  status: string;
+  message?: string;
+  move_date: string;
+  deleted_rows: number;
+  deleted_total_qty: number;
+  before_rows: number;
+  before_qty: number;
+  after_rows: number;
+  after_qty: number;
+  shipment_summary: DefectAutoShipmentSummary | null;
+}> {
+  const res = await fetch(`${API_BASE}/defect-auto/shipment-delete-move-date`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ move_date: body.move_date }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(text || res.statusText);
+  }
   return res.json() as Promise<{
     status: string;
-    message: string;
+    message?: string;
+    move_date: string;
+    deleted_rows: number;
+    deleted_total_qty: number;
+    before_rows: number;
+    before_qty: number;
+    after_rows: number;
+    after_qty: number;
     shipment_summary: DefectAutoShipmentSummary | null;
-    shipment_parse_report?: unknown;
   }>;
 }
 
@@ -231,6 +285,18 @@ export type DefectAutoShipmentSummary = {
   total_qty: number;
   /** 동일 출하(이동일자·LOT·제품·수량 조합)가 이미 DB에 있어 저장을 건너뜀 */
   duplicate_skipped?: boolean;
+};
+
+export type DefectAutoShipmentUploadResult = {
+  status: string;
+  message: string;
+  duplicate_skipped?: boolean;
+  inserted_rows?: number;
+  skipped_rows?: number;
+  inserted_qty?: number;
+  skipped_qty?: number;
+  shipment_summary: DefectAutoShipmentSummary | null;
+  shipment_parse_report?: unknown;
 };
 
 export type DefectAutoLotDefectItem = {

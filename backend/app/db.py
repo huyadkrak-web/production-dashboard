@@ -49,3 +49,12 @@ def supabase_delete_by_filters(table: str, filters: dict[str, str]) -> str:
     res = requests.delete(url, headers=HEADERS, params=params)
     res.raise_for_status()
     return res.text
+
+
+def supabase_patch_by_filters(table: str, filters: dict[str, str], payload: dict) -> str:
+    """PostgREST PATCH: ``filters``에 맞는 모든 행을 ``payload``로 갱신합니다."""
+    url = f"{SUPABASE_URL}/rest/v1/{table}"
+    params = {k: f"eq.{v}" for k, v in filters.items()}
+    res = requests.patch(url, headers=HEADERS, params=params, json=payload)
+    res.raise_for_status()
+    return res.text

@@ -4,6 +4,7 @@ import {
   getDefectAutoShipmentMoveDates,
   getDefectAutoShipmentSummary,
   postDefectAutoReset,
+  postDefectAutoShipmentDeleteMoveDate,
   type DefectAutoShipmentMoveDateRow,
   type DefectAutoShipmentSummary,
   uploadDefectShipment,
@@ -25,6 +26,14 @@ const SHIPMENT_FILE_INPUT_WRAP: CSSProperties = {
   minWidth: "9rem",
   flexShrink: 0,
 };
+
+/** 서버·POST 응답에 출하 누적이 있는지(화면 표시·compute 사전 검사). */
+function isShipmentSummaryPopulated(
+  summary: DefectAutoShipmentSummary | null | undefined,
+): boolean {
+  if (!summary) return false;
+  return (Number(summary.lot_count) || 0) > 0 || (Number(summary.total_qty) || 0) > 0;
+}
 
 /** move_date 일자별 rollup → YYYY-MM 단위 합산(행 수·이동수량). UI 전용. */
 function aggregateShipmentRollupsByMonth(
@@ -64,21 +73,39 @@ export default function DefectAutoUploadPanel({
   const [moveDateRollups, setMoveDateRollups] = useState<DefectAutoShipmentMoveDateRow[]>([]);
   const [moveDateSelect, setMoveDateSelect] = useState("");
 
-  const refreshShipmentMeta = useCallback(async () => {
-    try {
-      const [sumRes, datesRes] = await Promise.all([
-        getDefectAutoShipmentSummary(),
-        getDefectAutoShipmentMoveDates(),
-      ]);
-      setShipmentSummary(sumRes.shipment_summary ?? null);
-      setMoveDateRollups(Array.isArray(datesRes.move_dates) ? datesRes.move_dates : []);
-      setMoveDateSelect("");
-    } catch {
-      setShipmentSummary(null);
-      setMoveDateRollups([]);
-      setMoveDateSelect("");
-    }
-  }, []);
+  const applyShipmentSummaryFromApi = useCallback(
+    (summary: DefectAutoShipmentSummary | null | undefined) => {
+      if (summary != null) {
+        setShipmentSummary(summary);
+      }
+    },
+    [],
+  );
+
+  /** GET shipment-summary·move-dates. 실패 시 기존 화면 state는 유지(업로드 직후 null로 비우지 않음). */
+  const refreshShipmentMeta = useCallback(
+    async (opts?: { clearOnError?: boolean }) => {
+      const clearOnError = opts?.clearOnError === true;
+      try {
+        const [sumRes, datesRes] = await Promise.all([
+          getDefectAutoShipmentSummary(),
+          getDefectAutoShipmentMoveDates(),
+        ]);
+        if (sumRes.shipment_summary != null) {
+          setShipmentSummary(sumRes.shipment_summary);
+        }
+        setMoveDateRollups(Array.isArray(datesRes.move_dates) ? datesRes.move_dates : []);
+        setMoveDateSelect("");
+      } catch {
+        if (clearOnError) {
+          setShipmentSummary(null);
+          setMoveDateRollups([]);
+          setMoveDateSelect("");
+        }
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     void refreshShipmentMeta();
@@ -93,11 +120,20 @@ export default function DefectAutoUploadPanel({
     setDefectAutoMessage("");
     try {
       const up = await uploadDefectShipment(shipmentFile);
+      applyShipmentSummaryFromApi(up.shipment_summary);
       await refreshShipmentMeta();
-      const dup = up.shipment_summary?.duplicate_skipped === true;
-      const uploadOkMsg = dup
-        ? "이미 동일 출하가 저장되어 있어 변경하지 않았습니다."
-        : "파일 업로드가 완료되었습니다.";
+      const dup =
+        up.duplicate_skipped === true || up.shipment_summary?.duplicate_skipped === true;
+      const insertedRows = Number(up.inserted_rows) || 0;
+      const insertedQty = Number(up.inserted_qty) || 0;
+      let uploadOkMsg: string;
+      if (dup) {
+        uploadOkMsg = "이미 동일 출하가 저장되어 있어 변경하지 않았습니다.";
+      } else if (insertedRows > 0) {
+        uploadOkMsg = `출하 파일 업로드가 완료되었습니다. 신규 ${insertedRows.toLocaleString("ko-KR")}건 / 이동수량 ${insertedQty.toLocaleString("ko-KR")}가 추가되었습니다.`;
+      } else {
+        uploadOkMsg = "파일 업로드가 완료되었습니다.";
+      }
       setDefectAutoMessage(uploadOkMsg);
       window.alert(uploadOkMsg);
     } catch (e) {
@@ -121,13 +157,63 @@ export default function DefectAutoUploadPanel({
     setDefectAutoMessage("");
     try {
       const resetRes = await postDefectAutoReset();
-      await refreshShipmentMeta();
+      await refreshShipmentMeta({ clearOnError: true });
       setShipmentFile(null);
       setShipmentFileInputKey((k) => k + 1);
       onResetSuccess?.([], []);
       const resetMsg = resetRes.message || "초기화 완료";
       setDefectAutoMessage(resetMsg);
       window.alert(resetMsg);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setDefectAutoMessage(msg);
+      window.alert(`실패: ${msg}`);
+    } finally {
+      setDefectAutoLoading(false);
+    }
+  }
+
+  /**
+   * 선택한 이동일자(`move_date`)의 출하 행만 부분 삭제.
+   * - 전체 초기화와 분리된 안전 경로(다른 날짜 출하 데이터는 그대로 유지)
+   * - 출하가 바뀌면 주/월/LOT 집계가 stale 되므로 `onResetSuccess([], [])`로 차트 병합 상태도 리셋
+   */
+  async function handleDeleteSelectedMoveDate() {
+    const md = moveDateSelect;
+    if (!md) {
+      const noSelMsg = "삭제할 이동일자를 먼저 선택하세요.";
+      setDefectAutoMessage(noSelMsg);
+      window.alert(noSelMsg);
+      return;
+    }
+    const rollup = moveDateRollups.find((r) => r.date === md);
+    const rowText = rollup
+      ? ` (${Number(rollup.row_count).toLocaleString("ko-KR")}건 / 이동수량 ${Number(rollup.total_qty).toLocaleString("ko-KR")})`
+      : "";
+    const ok = window.confirm(
+      `${md} 출하 데이터를 삭제하시겠습니까?${rowText}\n\n` +
+        "이 작업은 선택한 이동일자만 삭제하며, 다른 날짜의 출하 데이터는 그대로 유지됩니다.\n" +
+        "삭제 후에는 주차·월별·LOT 자동 집계 결과가 stale 상태가 되므로, 필요 시 \"공정불량 자동 계산\"을 다시 실행하세요.\n\n" +
+        "「확인」을 누르면 실행되고, 「취소」를 누르면 아무 일도 하지 않습니다.",
+    );
+    if (!ok) return;
+    setDefectAutoLoading(true);
+    setDefectAutoMessage("");
+    try {
+      const res = await postDefectAutoShipmentDeleteMoveDate({ move_date: md });
+      const deletedRows = Number(res.deleted_rows) || 0;
+      const deletedQty = Number(res.deleted_total_qty) || 0;
+      if (res.shipment_summary != null) {
+        setShipmentSummary(res.shipment_summary);
+      }
+      await refreshShipmentMeta();
+      onResetSuccess?.([], []);
+      const okMsg =
+        deletedRows > 0
+          ? `${md} 출하 ${deletedRows.toLocaleString("ko-KR")}건 / 이동수량 ${deletedQty.toLocaleString("ko-KR")}를 삭제했습니다.`
+          : `${md} 에 해당하는 출하 데이터가 없습니다.`;
+      setDefectAutoMessage(okMsg);
+      window.alert(okMsg);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setDefectAutoMessage(msg);
@@ -149,6 +235,16 @@ export default function DefectAutoUploadPanel({
     setDefectAutoLoading(true);
     setDefectAutoMessage("");
     try {
+      const sumRes = await getDefectAutoShipmentSummary();
+      const serverSummary = sumRes.shipment_summary ?? null;
+      if (!isShipmentSummaryPopulated(serverSummary)) {
+        const noShipMsg =
+          "서버에 저장된 출하 데이터가 없습니다. 출하 파일을 먼저 업로드한 뒤 다시 시도하세요.";
+        setDefectAutoMessage(noShipMsg);
+        window.alert(noShipMsg);
+        return;
+      }
+      applyShipmentSummaryFromApi(serverSummary);
       const res = await computeDefectAuto(codeDefectFile, workFile);
       console.log("[defect-auto] weekly", res.weekly);
       console.log("[defect-auto] monthly", res.monthly);
@@ -171,6 +267,19 @@ export default function DefectAutoUploadPanel({
     [moveDateRollups],
   );
 
+  const hasShipmentDisplay =
+    isShipmentSummaryPopulated(shipmentSummary) || moveDateRollups.length > 0;
+
+  const rollupTotals = useMemo(() => {
+    let rowCount = 0;
+    let totalQty = 0;
+    for (const r of moveDateRollups) {
+      rowCount += Number(r.row_count) || 0;
+      totalQty += Number(r.total_qty) || 0;
+    }
+    return { rowCount, totalQty };
+  }, [moveDateRollups]);
+
   return (
     <section className="card" data-pdf-exclude="meta">
       <h2 className="cardTitle">공정불량 자동화</h2>
@@ -180,7 +289,9 @@ export default function DefectAutoUploadPanel({
         주차·같은 월 행은 자동 집계로 덮어쓰고, 나머지 수기 행은 유지됩니다. 작업일보·코드별
         불량현황은 입력 카드에서 선택한 파일을 사용합니다. 저장은 각각 주차/월별 카드의 저장
         버튼을 사용하세요. 처음부터 다시 맞출 때는 &quot;공정불량 자동화 초기화&quot;로 출하·주·월·LOT
-        자동 데이터를 한 번에 비울 수 있습니다.
+        자동 데이터를 한 번에 비울 수 있습니다. 특정 이동일자만 잘못 올린 경우에는 이동일자
+        select에서 해당 날짜를 선택한 뒤 &quot;선택 이동일자 삭제&quot;로 그 날짜의 출하 행만 안전하게
+        부분 삭제할 수 있습니다(다른 날짜는 유지).
       </p>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%" }}>
@@ -219,6 +330,7 @@ export default function DefectAutoUploadPanel({
               id="defect-auto-shipment-file"
               type="file"
               accept=".xlsx,.xls"
+              data-testid="shipment-file"
               disabled={defectAutoLoading}
               onChange={(e) => {
                 const f = e.target.files?.[0] ?? null;
@@ -249,6 +361,7 @@ export default function DefectAutoUploadPanel({
               </label>
               <select
                 id="defect-auto-move-dates"
+                data-testid="shipment-move-date-select"
                 disabled={defectAutoLoading || moveDateRollups.length === 0}
                 value={moveDateSelect}
                 onChange={(e) => setMoveDateSelect(e.target.value)}
@@ -288,6 +401,7 @@ export default function DefectAutoUploadPanel({
             type="button"
             className="button"
             disabled={defectAutoLoading}
+            data-testid="upload-shipment-button"
             onClick={handleShipmentUpload}
           >
             출하 파일 업로드
@@ -296,6 +410,7 @@ export default function DefectAutoUploadPanel({
             type="button"
             className="button"
             disabled={defectAutoLoading}
+            data-testid="run-defect-auto-button"
             onClick={handleCompute}
           >
             공정불량 자동 계산
@@ -303,7 +418,22 @@ export default function DefectAutoUploadPanel({
           <button
             type="button"
             className="button"
+            disabled={defectAutoLoading || !moveDateSelect}
+            data-testid="delete-shipment-move-date-button"
+            onClick={handleDeleteSelectedMoveDate}
+            title={
+              moveDateSelect
+                ? `선택한 이동일자(${moveDateSelect})의 출하 데이터만 삭제합니다. 다른 날짜는 유지됩니다.`
+                : "이동일자 select에서 삭제할 날짜를 먼저 선택하세요."
+            }
+          >
+            선택 이동일자 삭제
+          </button>
+          <button
+            type="button"
+            className="button"
             disabled={defectAutoLoading}
+            data-testid="reset-defect-auto-button"
             onClick={handleResetAll}
             title="출하·주·월·LOT 자동 집계를 서버에서 모두 삭제합니다"
           >
@@ -313,7 +443,7 @@ export default function DefectAutoUploadPanel({
       </div>
 
       <div className="hint" style={{ marginTop: 12, marginBottom: 0 }}>
-        {shipmentSummary ? (
+        {hasShipmentDisplay ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <span style={{ fontWeight: 600 }}>출하 누적</span>
             {shipmentByMonth.length > 0 ? (
@@ -331,9 +461,16 @@ export default function DefectAutoUploadPanel({
               </span>
             )}
             <span>
-              전체: {shipmentSummary.min_date} ~ {shipmentSummary.max_date} / Lot{" "}
-              {shipmentSummary.lot_count.toLocaleString("ko-KR")}건 / 이동수량{" "}
-              {shipmentSummary.total_qty.toLocaleString("ko-KR")}
+              전체:{" "}
+              {shipmentSummary?.min_date && shipmentSummary?.max_date
+                ? `${shipmentSummary.min_date} ~ ${shipmentSummary.max_date}`
+                : moveDateRollups.length > 0
+                  ? `${moveDateRollups[0]?.date ?? ""} ~ ${moveDateRollups[moveDateRollups.length - 1]?.date ?? ""}`
+                  : "—"}{" "}
+              / Lot{" "}
+              {(shipmentSummary?.lot_count ?? rollupTotals.rowCount).toLocaleString("ko-KR")}건 /
+              이동수량{" "}
+              {(shipmentSummary?.total_qty ?? rollupTotals.totalQty).toLocaleString("ko-KR")}
             </span>
           </div>
         ) : (

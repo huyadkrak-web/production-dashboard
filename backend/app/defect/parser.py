@@ -19,6 +19,12 @@ _SHIPMENT_SHEET_PREFERRED = "공장 받기@2"
 # 헤더 탐색 시 상단 몇 행까지 볼지 (이동일자·타이틀 행 포함)
 _SHIPMENT_HEADER_SCAN_ROWS = 55
 
+# 상단 '이동일자' 라벨 셀 탐색 시 살펴볼 행 수 (수동 양식: r4, 본사 MES 양식: r1)
+_SHIPMENT_DATE_LABEL_SCAN_ROWS = 10
+
+# _norm("이동일자") == "이동일자" (한글은 그대로 유지되고 공백·줄바꿈만 제거)
+_SHIPMENT_DATE_LABEL_NORM = "이동일자"
+
 _RESERVED_LOT_TOKENS = frozenset(
     {
         "LOTID",
@@ -49,12 +55,27 @@ _SUMMARY_HINTS = re.compile(
 _LOT_STRING_SCI_NOTATION = re.compile(r"^[+-]?\d+(\.\d+)?[eE][+-]?\d+\s*$")
 
 
+def _is_shipment_at2_sheet_name(name: str) -> bool:
+    """`공장 받기`로 시작하고 `@2`로 끝나는 시트명(예: `공장 받기(P2105MA2)@2`)."""
+    if not isinstance(name, str):
+        return False
+    return name.startswith("공장 받기") and name.endswith("@2")
+
+
 def _select_shipment_sheet_name(sheet_names: list[str]) -> str:
-    """시트 선택: '공장 받기@2' → 두 번째 시트 → 첫 시트."""
+    """시트 선택 우선순위:
+      1) 정확히 '공장 받기@2'
+      2) '공장 받기'로 시작하고 '@2'로 끝나는 시트(예: '공장 받기(P2105MA2)@2')
+      3) 두 번째 시트
+      4) 첫 시트
+    """
     if not sheet_names:
         raise ValueError("엑셀에 시트가 없습니다.")
     if _SHIPMENT_SHEET_PREFERRED in sheet_names:
         return _SHIPMENT_SHEET_PREFERRED
+    for name in sheet_names:
+        if _is_shipment_at2_sheet_name(name):
+            return name
     if len(sheet_names) >= 2:
         return sheet_names[1]
     return sheet_names[0]
@@ -230,15 +251,171 @@ def _find_shipment_header_and_columns(
     if best is not None:
         return best[0], best[1], best[2], best[3], best[4], best[5]
 
-    # 레거시: 7행부터, C/E/I (인덱스 2,4,8), D4 일괄 일자
+    # 레거시: 7행부터, C/E/I (인덱스 2,4,8), D4·E4 상단 조회기간(이동일자는 D4/E4 규칙으로 별도 처리)
     return 5, 2, 4, 8, None, "legacy_fixed_CEI"
 
 
-def _read_global_move_date_from_d4(raw: pd.DataFrame) -> pd.Timestamp:
+def _shipment_col_idx_to_letter(col_idx: int) -> str:
+    """0-based 열 인덱스를 Excel 열 문자(A, B, …, Z, AA, …)로."""
+    if col_idx < 0:
+        return ""
+    s = ""
+    n = col_idx + 1
+    while n > 0:
+        n, r = divmod(n - 1, 26)
+        s = chr(ord("A") + r) + s
+    return s
+
+
+def _shipment_cell_to_date(value: Any) -> pd.Timestamp:
+    """`이동일자` 라벨 우측 셀을 안전하게 날짜로 변환. 숫자(공정번호·합계 등)는 날짜 취급하지 않음."""
+    if value is None:
+        return pd.NaT
     try:
-        return pd.to_datetime(raw.iloc[3, 3], errors="coerce")
+        if pd.isna(value):
+            return pd.NaT
+    except Exception:
+        pass
+    if isinstance(value, bool):
+        return pd.NaT
+    if isinstance(value, (int, float)):
+        return pd.NaT
+    if isinstance(value, pd.Timestamp):
+        return value
+    if isinstance(value, str):
+        s = value.strip()
+        if not s or s == "~":
+            return pd.NaT
+        return pd.to_datetime(s, errors="coerce")
+    try:
+        return pd.to_datetime(value, errors="coerce")
     except Exception:
         return pd.NaT
+
+
+def _scan_move_date_label_and_dates(
+    raw: pd.DataFrame,
+) -> tuple[pd.Timestamp, dict[str, Any]]:
+    """상단 행에서 `이동일자` 라벨 셀을 찾아 오른쪽 방향으로 날짜 셀들을 수집.
+
+    - 날짜 ≥ 2개: 첫 번째=시작, 마지막=종료, 종료를 ``selected_move_date``로 사용.
+      (``move_date_source = "label_scan_query_end_date"``)
+    - 날짜 1개: 그 날짜를 ``query_start_date`` 및 ``selected_move_date``로 사용.
+      (``move_date_source = "label_scan_single_date"``)
+    - 라벨/날짜 미발견: ``pd.NaT``과 ``move_date_source = "missing"`` 메타 반환.
+    """
+    meta: dict[str, Any] = {
+        "query_start_date": "",
+        "query_end_date": "",
+        "selected_move_date": "",
+        "move_date_source": "missing",
+        "date_label_cell": "",
+        "date_label_position": "",
+        "date_scan_values": [],
+    }
+    if raw is None or raw.empty:
+        return pd.NaT, meta
+
+    max_r = min(_SHIPMENT_DATE_LABEL_SCAN_ROWS, raw.shape[0])
+    max_c = raw.shape[1]
+    label_pos: tuple[int, int] | None = None
+    for i in range(max_r):
+        for j in range(max_c):
+            v = raw.iloc[i, j]
+            if pd.isna(v):
+                continue
+            if _norm_key_cell(v) == _SHIPMENT_DATE_LABEL_NORM:
+                label_pos = (i, j)
+                break
+        if label_pos is not None:
+            break
+
+    if label_pos is None:
+        return pd.NaT, meta
+
+    li, lj = label_pos
+    meta["date_label_cell"] = f"{_shipment_col_idx_to_letter(lj)}{li + 1}"
+    meta["date_label_position"] = f"({li},{lj})"
+
+    collected: list[pd.Timestamp] = []
+    for j in range(lj + 1, max_c):
+        ts = _shipment_cell_to_date(raw.iloc[li, j])
+        if pd.isna(ts):
+            continue
+        collected.append(ts)
+
+    meta["date_scan_values"] = [t.strftime("%Y-%m-%d") for t in collected]
+
+    if len(collected) >= 2:
+        start_ts = collected[0]
+        end_ts = collected[-1]
+        meta["query_start_date"] = start_ts.strftime("%Y-%m-%d")
+        meta["query_end_date"] = end_ts.strftime("%Y-%m-%d")
+        meta["selected_move_date"] = end_ts.strftime("%Y-%m-%d")
+        meta["move_date_source"] = "label_scan_query_end_date"
+        return end_ts, meta
+    if len(collected) == 1:
+        only_ts = collected[0]
+        meta["query_start_date"] = only_ts.strftime("%Y-%m-%d")
+        meta["selected_move_date"] = only_ts.strftime("%Y-%m-%d")
+        meta["move_date_source"] = "label_scan_single_date"
+        return only_ts, meta
+
+    return pd.NaT, meta
+
+
+def _parse_shipment_query_dates_d4_e4(raw: pd.DataFrame) -> tuple[pd.Timestamp, dict[str, Any]]:
+    """이동일자(``move_date``) 결정.
+
+    우선순위:
+      1) 상단 `이동일자` 라벨 셀을 찾고, 같은 행 오른쪽의 날짜 셀들로 query_start/end·이동일자 결정
+         - 수동 양식: 라벨 C4 + D4·E4
+         - 본사 MES 양식: 라벨 D1 + E1·G1 (F1 ``~`` 등 비-날짜 셀은 건너뜀)
+      2) 라벨/날짜 탐색 실패 시 D4/E4 고정 위치 fallback (기존 동작 유지)
+         - D4·E4 둘 다 유효 → E4(종료일) → ``move_date_source = "E4_query_end_date"``
+         - D4만 유효 → D4 → ``move_date_source = "D4_fallback"``
+         - 모두 무효 → ``pd.NaT`` (``move_date_source = "missing"``)
+    """
+    scan_ts, scan_meta = _scan_move_date_label_and_dates(raw)
+    if not pd.isna(scan_ts):
+        return scan_ts, scan_meta
+
+    d4_ts = pd.NaT
+    e4_ts = pd.NaT
+    try:
+        if raw.shape[0] > 3 and raw.shape[1] > 3:
+            d4_ts = pd.to_datetime(raw.iloc[3, 3], errors="coerce")
+        if raw.shape[0] > 3 and raw.shape[1] > 4:
+            e4_ts = pd.to_datetime(raw.iloc[3, 4], errors="coerce")
+    except Exception:
+        pass
+
+    meta: dict[str, Any] = {
+        "query_start_date": "",
+        "query_end_date": "",
+        "selected_move_date": "",
+        "move_date_source": "missing",
+        # 라벨 스캔 결과(라벨은 찾았지만 날짜 0개인 경우 등) — 키 일관성 유지
+        "date_label_cell": scan_meta.get("date_label_cell", ""),
+        "date_label_position": scan_meta.get("date_label_position", ""),
+        "date_scan_values": scan_meta.get("date_scan_values", []),
+    }
+    d4_ok = not pd.isna(d4_ts)
+    e4_ok = not pd.isna(e4_ts)
+    if d4_ok:
+        meta["query_start_date"] = d4_ts.strftime("%Y-%m-%d")
+    if e4_ok:
+        meta["query_end_date"] = e4_ts.strftime("%Y-%m-%d")
+
+    if d4_ok and e4_ok:
+        meta["move_date_source"] = "E4_query_end_date"
+        meta["selected_move_date"] = e4_ts.strftime("%Y-%m-%d")
+        return e4_ts, meta
+    if d4_ok:
+        meta["move_date_source"] = "D4_fallback"
+        meta["selected_move_date"] = d4_ts.strftime("%Y-%m-%d")
+        return d4_ts, meta
+    return pd.NaT, meta
 
 
 def _lot_from_row_series(
@@ -259,9 +436,15 @@ def _lot_from_row_series(
 
 
 def parse_shipment(file_bytes: bytes) -> pd.DataFrame:
-    """공장 받기.xlsx(출하): 시트 ``공장 받기@2`` 우선, 헤더 행에서 LOT·총 수량 열 탐지.
+    """공장 받기.xlsx(출하): 시트 ``공장 받기@2`` 우선(또는 ``공장 받기*@2`` 패턴), 헤더 행에서 LOT·총 수량 열 탐지.
 
-    레거시 고정(7행~, C/E/I, D4 일자)은 헤더를 찾지 못할 때만 사용합니다.
+    이동일자(``move_date``):
+      1) 상단 ``이동일자`` 라벨 셀을 찾아 같은 행 오른쪽 날짜 셀들로 결정
+         (수동 양식: C4 라벨 + D4·E4 / 본사 MES 양식: D1 라벨 + E1·G1)
+      2) 라벨 스캔 실패 시 D4·E4 고정 위치 fallback (둘 다 날짜면 E4, D4만이면 D4)
+
+    ``공장 받기@2`` 또는 동일 패턴 시트(``공장 받기*@2``)에서는 행별 이동일자 열을 사용하지 않습니다.
+    레거시 고정(7행~, C/E/I)은 헤더를 찾지 못할 때만 사용합니다.
     """
     bio = io.BytesIO(file_bytes)
     xl = pd.ExcelFile(bio, engine="openpyxl")
@@ -279,7 +462,29 @@ def parse_shipment(file_bytes: bytes) -> pd.DataFrame:
     header_idx, lot_col, prod_col, qty_col, date_col, layout_mode = (
         _find_shipment_header_and_columns(raw)
     )
-    global_move_date = _read_global_move_date_from_d4(raw)
+    if (
+        selected_sheet_name == _SHIPMENT_SHEET_PREFERRED
+        or _is_shipment_at2_sheet_name(selected_sheet_name)
+    ):
+        date_col = None
+    global_move_date, shipment_date_range_meta = _parse_shipment_query_dates_d4_e4(raw)
+
+    logger.info(
+        "[shipment_date_range_parse] %s",
+        json.dumps(
+            {
+                "sheet": selected_sheet_name,
+                "query_start_date": shipment_date_range_meta.get("query_start_date", ""),
+                "query_end_date": shipment_date_range_meta.get("query_end_date", ""),
+                "selected_move_date": shipment_date_range_meta.get("selected_move_date", ""),
+                "move_date_source": shipment_date_range_meta.get("move_date_source", ""),
+                "date_label_cell": shipment_date_range_meta.get("date_label_cell", ""),
+                "date_label_position": shipment_date_range_meta.get("date_label_position", ""),
+                "date_scan_values": shipment_date_range_meta.get("date_scan_values", []),
+            },
+            ensure_ascii=False,
+        ),
+    )
 
     exclusions: list[dict[str, Any]] = []
     records: list[dict[str, Any]] = []
@@ -414,6 +619,13 @@ def parse_shipment(file_bytes: bytes) -> pd.DataFrame:
         "product_col_0based": prod_col,
         "qty_col_0based": qty_col,
         "move_date_col_0based": date_col,
+        "query_start_date": shipment_date_range_meta.get("query_start_date", ""),
+        "query_end_date": shipment_date_range_meta.get("query_end_date", ""),
+        "move_date_source": shipment_date_range_meta.get("move_date_source", ""),
+        "selected_move_date": shipment_date_range_meta.get("selected_move_date", ""),
+        "date_label_cell": shipment_date_range_meta.get("date_label_cell", ""),
+        "date_label_position": shipment_date_range_meta.get("date_label_position", ""),
+        "date_scan_values": shipment_date_range_meta.get("date_scan_values", []),
         "sheet_total_rows": original_row_count,
         "body_row_count_before_filter": body_rows_before_filter,
         "data_start_row_0based": data_start,
@@ -438,6 +650,13 @@ def parse_shipment(file_bytes: bytes) -> pd.DataFrame:
                 "filtered_row_count": filtered_row_count,
                 "move_qty_sum": move_sum,
                 "layout_mode": layout_mode,
+                "query_start_date": shipment_date_range_meta.get("query_start_date", ""),
+                "query_end_date": shipment_date_range_meta.get("query_end_date", ""),
+                "move_date_source": shipment_date_range_meta.get("move_date_source", ""),
+                "selected_move_date": shipment_date_range_meta.get("selected_move_date", ""),
+                "date_label_cell": shipment_date_range_meta.get("date_label_cell", ""),
+                "date_label_position": shipment_date_range_meta.get("date_label_position", ""),
+                "date_scan_values": shipment_date_range_meta.get("date_scan_values", []),
                 "excluded_count": len(exclusions),
                 "excluded_rows": ex_preview,
             },

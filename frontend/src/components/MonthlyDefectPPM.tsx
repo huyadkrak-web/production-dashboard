@@ -161,7 +161,9 @@ function MonthlyChartManualLegend({ labels }: { labels: string[] }) {
               height: 14,
               flexShrink: 0,
               backgroundColor: getDefectColor(lab),
+              border: "1px solid #cbd5e1",
               borderRadius: 2,
+              boxSizing: "border-box",
             }}
             aria-hidden
           />
